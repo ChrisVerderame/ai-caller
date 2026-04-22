@@ -96,16 +96,33 @@ app.post("/recording", (req, res) => {
   res.sendStatus(200);
 });
 
-// 🔥 AI VOICE (FIXED)
+// 🔥 AI VOICE (FIXED + IMPROVED CONVO)
 app.all("/twilio-voice", async (req, res) => {
   const input = req.body.SpeechResult;
   const sid = req.body.CallSid;
   const address = req.query.address || "PROPERTY";
 
-  console.log("SpeechResult:", input);
-
   if (!sessions[sid]) sessions[sid] = [];
 
+  const isFirst = sessions[sid].length === 0;
+
+  // 🔥 FIRST MESSAGE (NO MORE "REPEAT THAT")
+  if (isFirst) {
+    return res.type("text/xml").send(`
+<Response>
+  <Gather input="speech"
+    speechTimeout="auto"
+    method="POST"
+    action="/twilio-voice?address=${encodeURIComponent(address)}">
+    <Say>
+      Hey, this is about your place on ${address} — did I catch you at a bad time?
+    </Say>
+  </Gather>
+</Response>
+`);
+  }
+
+  // 🔥 NO INPUT AFTER FIRST TURN
   if (!input) {
     return res.type("text/xml").send(`
 <Response>
@@ -113,12 +130,13 @@ app.all("/twilio-voice", async (req, res) => {
     speechTimeout="auto"
     method="POST"
     action="/twilio-voice?address=${encodeURIComponent(address)}">
-    <Say>Can you repeat that?</Say>
+    <Say>Sorry, what was that?</Say>
   </Gather>
 </Response>
 `);
   }
 
+  // SAVE USER INPUT
   sessions[sid].push({ role: "user", content: input });
 
   let reply = "Got it.";
@@ -133,13 +151,44 @@ app.all("/twilio-voice", async (req, res) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-5",
-        max_tokens: 100,
-        system: "You are a casual real estate caller. Keep responses short and natural.",
+        max_tokens: 120,
+
+        system: `
+You are a real estate acquisitions caller talking to a homeowner.
+
+STYLE:
+- Talk casually like a real person
+- Short sentences
+- One question at a time
+- Slightly imperfect is fine
+
+FLOW:
+1. Ask if they’d consider selling
+2. Ask timeline
+3. Ask condition
+4. Ask motivation
+
+IF INTERESTED:
+- Move toward setting a call
+- "I can have my partner Chris give you a quick call"
+
+IF NOT INTERESTED:
+- Stay relaxed
+- Don't push hard
+- Exit naturally
+
+IMPORTANT:
+- Never sound scripted
+- Never say "as an AI"
+- Keep it human
+`
+        ,
         messages: sessions[sid]
       })
     });
 
     const data = await ai.json();
+
     if (data.content && data.content.length > 0) {
       reply = data.content[0].text;
     }
@@ -162,7 +211,7 @@ app.all("/twilio-voice", async (req, res) => {
 `);
 });
 
-// 🔥 CLEAN VOXLY-STYLE UI
+// 🔥 CLEAN VOXLY UI
 app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
@@ -190,7 +239,7 @@ app.get("/dashboard", (req, res) => {
       }
 
       .logo img {
-        height:180px;
+        height:200px;
       }
 
       .cta {
