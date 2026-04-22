@@ -8,9 +8,6 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// =========================
-// MEMORY
-// =========================
 const sessions = {};
 const callState = {};
 
@@ -22,67 +19,25 @@ let queue = [];
 
 const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 
-// =========================
-// ROOT
-// =========================
 app.get("/", (req, res) => res.send("RUNNING"));
 
-// =========================
-// DASHBOARD
-// =========================
+// ================= UI =================
 app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
-  <head>
-    <style>
-      body { margin:0; background:#000; color:#fff; font-family:sans-serif; }
-      .wrap { max-width:800px; margin:auto; padding:50px 20px; }
-      .logo img { height:220px; display:block; margin:auto; }
-      .btn { display:block; margin:30px auto; padding:14px 30px; background:#fff; color:#000; border:none; border-radius:12px; font-weight:bold; cursor:pointer; }
-      .row { display:flex; justify-content:space-between; padding:16px 0; border-bottom:1px solid #111; }
-    </style>
-  </head>
-  <body>
-    <div class="wrap">
-      <div class="logo"><img src="/logo.png"/></div>
-      <button class="btn" onclick="start()">START CALLING</button>
-      <div id="list"></div>
+  <body style="background:#000;color:#fff;font-family:sans-serif;">
+    <div style="max-width:800px;margin:auto;padding:40px;">
+      <img src="/logo.png" style="height:220px;display:block;margin:auto;">
+      <button onclick="fetch('/start-calls')" style="margin-top:30px;padding:15px;background:#fff;color:#000;font-weight:bold;border:none;border-radius:10px;">START CALLING</button>
     </div>
-
-    <script>
-      async function start(){
-        await fetch("/start-calls");
-        alert("Started");
-      }
-
-      async function load(){
-        const leads = await (await fetch("/leads")).json();
-        const list = document.getElementById("list");
-        list.innerHTML = "";
-
-        leads.forEach(l=>{
-          const row = document.createElement("div");
-          row.className = "row";
-          row.innerHTML = l.phone + " | " + l.address;
-          list.appendChild(row);
-        });
-      }
-
-      load();
-    </script>
   </body>
   </html>
   `);
 });
 
-// =========================
-// LEADS
-// =========================
 app.get("/leads", (req, res) => res.json(leads));
 
-// =========================
-// ELEVENLABS
-// =========================
+// ================= TTS =================
 app.post("/tts", async (req, res) => {
   try {
     const r = await fetch(
@@ -95,17 +50,13 @@ app.post("/tts", async (req, res) => {
         },
         body: JSON.stringify({
           text: req.body.text,
-          model_id: "eleven_turbo_v2",
-          optimize_streaming_latency: 3
+          model_id: "eleven_turbo_v2"
         })
       }
     );
 
-    if (!r.ok) throw new Error();
-
     const audio = await r.arrayBuffer();
     const file = "speech_" + Date.now() + ".mp3";
-
     fs.writeFileSync(path.join(__dirname, file), Buffer.from(audio));
 
     res.json({ url: BASE_URL + "/" + file });
@@ -115,9 +66,7 @@ app.post("/tts", async (req, res) => {
   }
 });
 
-// =========================
-// CALL FLOW
-// =========================
+// ================= CALL FLOW =================
 app.get("/start-calls", (req, res) => {
   queue = [...leads];
   processQueue();
@@ -157,9 +106,7 @@ app.get("/call", async (req, res) => {
   res.send("OK");
 });
 
-// =========================
-// AI VOICE (CLEAN + REAL)
-// =========================
+// ================= AI =================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
   const input = req.body.SpeechResult;
@@ -170,76 +117,57 @@ app.all("/twilio-voice", async (req, res) => {
 
   let reply;
 
-  // INTRO
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
 
     reply = "Hey, this is Jack from Blackline Acquisitions out of Farmington — you filled something out about getting an offer on your place at " + address + ", just wanted to follow up.";
-  }
-
-  // NO INPUT
+  } 
   else if (!input) {
-    reply = "Hey sorry, go ahead.";
-  }
-
-  // NORMAL CONVERSATION
+    reply = "Yeah go ahead";
+  } 
   else {
+
     sessions[sid].push({ role: "user", content: input });
 
-    // keep last few messages only
-    if (sessions[sid].length > 8) {
-      sessions[sid] = sessions[sid].slice(-8);
-    }
-
-    let text = "";
-
-    try {
-      const ai = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": process.env.ANTHROPIC_KEY,
-          "content-type": "application/json",
-          "anthropic-version": "2023-06-01"
-        },
-        body: JSON.stringify({
-          model: "claude-3-haiku-20240307",
-          max_tokens: 80,
-          temperature: 0.9,
-          system: `
-You are Jack from Blackline Acquisitions in Farmington.
+    const ai = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": process.env.ANTHROPIC_KEY,
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-3-haiku-20240307",
+        max_tokens: 60,
+        temperature: 0.9,
+        system: `
+You are Jack from Blackline Acquisitions.
 
 This is a follow-up call.
 
-You are continuing a real conversation.
+Talk like a normal human.
+Be casual, slightly imperfect.
 
 Respond directly to what they said.
-Keep it short and natural.
-Then ask a relevant follow-up question.
+Then ask something natural.
 `,
-          messages: sessions[sid]
-        })
-      });
+        messages: sessions[sid]
+      })
+    });
 
-      const data = await ai.json();
+    const data = await ai.json();
 
-      if (data?.content) {
-        for (const block of data.content) {
-          if (block.type === "text") {
-            text += block.text;
-          }
-        }
+    let text = "";
+    if (data.content) {
+      for (const b of data.content) {
+        if (b.type === "text") text += b.text;
       }
-
-    } catch (err) {
-      console.log("AI ERROR:", err.message);
     }
 
     reply = text.trim();
 
-    // 🔥 ONLY fallback if totally broken
-    if (!reply) {
-      reply = "Sorry — say that one more time?";
-    }
+    // 👉 ONLY fallback if API literally fails
+    if (!reply) reply = input; // mirror instead of looping garbage
 
     sessions[sid].push({ role: "assistant", content: reply });
   }
