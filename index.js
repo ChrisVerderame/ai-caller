@@ -12,7 +12,6 @@ app.use(express.static(__dirname));
 // MEMORY + STATE
 // =========================
 const sessions = {};
-const recordings = {};
 const callState = {};
 
 let leads = [
@@ -48,7 +47,7 @@ app.get("/dashboard", (req, res) => {
 app.get("/leads", (req, res) => res.json(leads));
 
 // =========================
-// ELEVENLABS
+// ELEVENLABS (SOFTER)
 // =========================
 app.post("/tts", async (req, res) => {
   try {
@@ -69,6 +68,8 @@ app.post("/tts", async (req, res) => {
         }
       })
     });
+
+    if (!r.ok) throw new Error();
 
     const audio = await r.arrayBuffer();
     const file = "speech_" + Date.now() + ".mp3";
@@ -96,7 +97,15 @@ async function processQueue() {
 
   const lead = queue.shift();
 
-  await fetch(BASE_URL + "/call?to=" + lead.phone + "&name=" + encodeURIComponent(lead.name || "") + "&address=" + encodeURIComponent(lead.address));
+  await fetch(
+    BASE_URL +
+      "/call?to=" +
+      lead.phone +
+      "&name=" +
+      encodeURIComponent(lead.name || "") +
+      "&address=" +
+      encodeURIComponent(lead.address)
+  );
 
   setTimeout(processQueue, 15000);
 }
@@ -105,15 +114,26 @@ app.get("/call", async (req, res) => {
   const params = new URLSearchParams({
     To: req.query.to,
     From: process.env.TWILIO_NUMBER,
-    Url: BASE_URL + "/twilio-voice?name=" + encodeURIComponent(req.query.name || "") + "&address=" + encodeURIComponent(req.query.address)
+    Url:
+      BASE_URL +
+      "/twilio-voice?name=" +
+      encodeURIComponent(req.query.name || "") +
+      "&address=" +
+      encodeURIComponent(req.query.address)
   });
 
   await fetch(
-    "https://api.twilio.com/2010-04-01/Accounts/" + process.env.TWILIO_SID + "/Calls.json",
+    "https://api.twilio.com/2010-04-01/Accounts/" +
+      process.env.TWILIO_SID +
+      "/Calls.json",
     {
       method: "POST",
       headers: {
-        Authorization: "Basic " + Buffer.from(process.env.TWILIO_SID + ":" + process.env.TWILIO_AUTH).toString("base64"),
+        Authorization:
+          "Basic " +
+          Buffer.from(
+            process.env.TWILIO_SID + ":" + process.env.TWILIO_AUTH
+          ).toString("base64"),
         "Content-Type": "application/x-www-form-urlencoded"
       },
       body: params
@@ -138,7 +158,7 @@ app.all("/twilio-voice", async (req, res) => {
   let reply;
 
   // =========================
-  // INTRO FLOW (NAME CHECK)
+  // INTRO FLOW
   // =========================
   if (callState[sid].introStage === 0) {
     callState[sid].introStage = 1;
@@ -148,13 +168,12 @@ app.all("/twilio-voice", async (req, res) => {
       : "Hey this is Jack from Blackline.";
 
   } else if (callState[sid].introStage === 1) {
-
     callState[sid].introStage = 2;
 
     if (input && input.toLowerCase().includes("no")) {
       reply = "Ah okay gotcha — sorry about that.";
     } else {
-      reply = "Gotcha — you had filled something out about getting an offer on your place, just wanted to follow up real quick.";
+      reply = "Gotcha — you had filled something out about getting an offer, just wanted to follow up real quick.";
     }
 
   } else {
@@ -175,16 +194,13 @@ app.all("/twilio-voice", async (req, res) => {
         system: `
 You are Jack from Blackline.
 
-Do NOT repeat the property or address more than once.
-Do NOT mention it again after the intro.
+- Do NOT repeat the property or address
+- Do NOT repeat what the caller says
+- Do NOT ask how the process works
+- Keep it natural and conversational
 
-Sound relaxed and conversational.
-
-DO NOT repeat what the caller says.
-DO NOT ask how the process works.
-
-If they show interest:
-say "let me grab Chris real quick"
+If they show interest, say:
+"let me grab Chris real quick"
 `,
         messages: sessions[sid]
       })
@@ -205,17 +221,35 @@ say "let me grab Chris real quick"
   }
 
   // =========================
-  // TRANSFER
+  // 🔥 QUALIFIED TRANSFER
   // =========================
-  if (reply.toLowerCase().includes("grab chris")) {
+  const r = (reply || "").toLowerCase();
+  const u = (input || "").toLowerCase();
 
+  const qualified =
+    u.includes("yes") ||
+    u.includes("yeah") ||
+    u.includes("interested") ||
+    u.includes("maybe") ||
+    u.includes("sell") ||
+    u.includes("offer") ||
+    u.includes("price") ||
+    u.includes("cash") ||
+    u.includes("buy") ||
+    u.includes("soon") ||
+    u.includes("asap") ||
+    u.includes("quick");
+
+  if (r.includes("grab chris") && qualified) {
     let audioUrl = null;
 
     try {
       const tts = await fetch(BASE_URL + "/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: "Cool — I’ll grab Chris real quick and he’ll get you situated." })
+        body: JSON.stringify({
+          text: "Cool — I’ll grab Chris real quick and he’ll get you situated."
+        })
       });
 
       audioUrl = (await tts.json()).url;
@@ -229,6 +263,9 @@ say "let me grab Chris real quick"
 `);
   }
 
+  // =========================
+  // NORMAL RESPONSE
+  // =========================
   let audioUrl = null;
 
   try {
