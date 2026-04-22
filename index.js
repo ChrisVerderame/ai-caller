@@ -190,18 +190,15 @@ Rules:
 - do not repeat the caller
 - do not sound scripted
 
-Style:
-- 1–2 sentences max
-- acknowledge briefly
-- ask ONE simple follow-up or just react
-- sometimes don’t ask a question at all
+Booking:
+- let them choose any day/time
+- ask "what works best for you?"
+- do NOT offer specific slots
 
-Examples:
-- yeah gotcha — are you just exploring or actually thinking about selling?
-- okay that makes sense… what’s got you looking into it?
-- honestly we can keep it simple — just wanted to see where you’re at with it
+If they give a time:
+say "perfect — we’ll follow up with you a few hours prior via text just to confirm"
 
-If they show interest:
+If they want to talk now:
 say "let me grab Chris real quick"
 `,
         messages: sessions[sid]
@@ -219,7 +216,21 @@ say "let me grab Chris real quick"
 
     reply = text.trim() || "yeah gotcha — what’s got you looking into it?";
 
-    // hard block address question
+    // detect if they gave a time
+    const lower = (input || "").toLowerCase();
+    const gaveTime =
+      lower.includes("am") ||
+      lower.includes("pm") ||
+      lower.includes("tomorrow") ||
+      lower.includes("today") ||
+      lower.includes("tonight") ||
+      lower.match(/\d{1,2}/);
+
+    if (gaveTime) {
+      reply = "perfect — we’ll follow up with you a few hours prior via text just to confirm";
+    }
+
+    // block address question
     if (reply.toLowerCase().includes("address")) {
       reply = "yeah gotcha — what’s got you looking into it?";
     }
@@ -227,6 +238,9 @@ say "let me grab Chris real quick"
     sessions[sid].push({ role: "assistant", content: reply });
   }
 
+  // =========================
+  // TRANSFER
+  // =========================
   if (reply.toLowerCase().includes("grab chris")) {
     let audioUrl = null;
 
