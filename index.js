@@ -193,6 +193,7 @@ RULES:
 - Never include stage directions
 - Never say things like "AI", "system", "hold music", "transfering call", "etc"
 - Never use asterisks or brackets
+- Never say "hey" or "What's up" or "how are you" more than once
 - Never narrate what you're doing
 - Only speak actual dialogue
 
