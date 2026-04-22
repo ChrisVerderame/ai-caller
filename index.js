@@ -155,7 +155,7 @@ app.all("/twilio-voice", async (req, res) => {
         },
         body: JSON.stringify({
           model: "claude-3-haiku-20240307",
-          max_tokens: 60,
+          max_tokens: 90,
           temperature: 0.8,
           system: `
 You are Jack from Blackline Acquisitions in Farmington.
