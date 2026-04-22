@@ -19,7 +19,7 @@ let leads = [
 
 let queue = [];
 
-// ✅ YOUR REAL DOMAIN
+// ✅ YOUR DOMAIN
 const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 
 // ROOT
@@ -28,7 +28,7 @@ app.get("/", (req, res) => res.send("RUNNING"));
 // LEADS
 app.get("/leads", (req, res) => res.json(leads));
 
-// STATUS
+// UPDATE STATUS
 app.post("/update-status", (req, res) => {
   const { id, status } = req.body;
   const lead = leads.find(l => l.id == id);
@@ -40,7 +40,7 @@ app.post("/update-status", (req, res) => {
 app.get("/recordings", (req, res) => res.json(recordings));
 
 /* =========================
-   🔥 DASHBOARD
+   DASHBOARD
 ========================= */
 app.get("/dashboard", (req, res) => {
   res.send(`
@@ -140,7 +140,7 @@ app.get("/dashboard", (req, res) => {
 });
 
 /* =========================
-   🔥 ELEVENLABS
+   ELEVENLABS (SAFE)
 ========================= */
 app.post("/tts", async (req, res) => {
   try {
@@ -159,6 +159,8 @@ app.post("/tts", async (req, res) => {
       }
     );
 
+    if (!response.ok) throw new Error("TTS failed");
+
     const audio = await response.arrayBuffer();
     const fileName = "speech_" + Date.now() + ".mp3";
     fs.writeFileSync(path.join(__dirname, fileName), Buffer.from(audio));
@@ -166,20 +168,18 @@ app.post("/tts", async (req, res) => {
     res.json({ url: BASE_URL + "/" + fileName });
 
   } catch (err) {
-    console.error("TTS ERROR:", err);
+    console.error("TTS ERROR:", err.message);
     res.json({ url: null });
   }
 });
 
 /* =========================
-   🔥 CALL FLOW
+   CALL FLOW
 ========================= */
 app.get("/start-calls", async (req, res) => {
   console.log("START CALLS TRIGGERED");
-
   queue = [...leads];
   processQueue();
-
   res.send("STARTED");
 });
 
@@ -192,7 +192,7 @@ async function processQueue() {
   const lead = queue.shift();
   console.log("CALLING:", lead.phone);
 
-  await fetch(`${BASE_URL}/call?to=${lead.phone}&address=${encodeURIComponent(lead.address)}`);
+  await fetch(BASE_URL + "/call?to=" + lead.phone + "&address=" + encodeURIComponent(lead.address));
 
   setTimeout(processQueue, 15000);
 }
@@ -203,13 +203,13 @@ app.get("/call", async (req, res) => {
   const params = new URLSearchParams({
     To: req.query.to,
     From: process.env.TWILIO_NUMBER,
-    Url: `${BASE_URL}/twilio-voice?address=${encodeURIComponent(req.query.address)}`,
+    Url: BASE_URL + "/twilio-voice?address=" + encodeURIComponent(req.query.address),
     Record: "true",
-    RecordingStatusCallback: `${BASE_URL}/recording`
+    RecordingStatusCallback: BASE_URL + "/recording"
   });
 
   const response = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_SID}/Calls.json`,
+    "https://api.twilio.com/2010-04-01/Accounts/" + process.env.TWILIO_SID + "/Calls.json",
     {
       method: "POST",
       headers: {
@@ -235,7 +235,7 @@ app.post("/recording", (req, res) => {
 });
 
 /* =========================
-   🔥 AI VOICE
+   AI VOICE
 ========================= */
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -247,30 +247,35 @@ app.all("/twilio-voice", async (req, res) => {
   let reply;
 
   if (sessions[sid].length === 0) {
-    reply = \`Hey, this is about your place on \${address} — did I catch you at a bad time?\`;
+    reply = "Hey, this is about your place on " + address + " - did I catch you at a bad time?";
   } else if (!input) {
     reply = "Sorry, what was that?";
   } else {
     sessions[sid].push({ role: "user", content: input });
 
-    const ai = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": process.env.ANTHROPIC_KEY,
-        "content-type": "application/json",
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 60,
-        temperature: 0.7,
-        system: "Real estate caller. Short, natural, push toward setting a call.",
-        messages: sessions[sid]
-      })
-    });
+    try {
+      const ai = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": process.env.ANTHROPIC_KEY,
+          "content-type": "application/json",
+          "anthropic-version": "2023-06-01"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 60,
+          temperature: 0.7,
+          system: "Real estate caller. Short, natural, push toward setting a call.",
+          messages: sessions[sid]
+        })
+      });
 
-    const data = await ai.json();
-    reply = data.content?.[0]?.text || "Got it.";
+      const data = await ai.json();
+      reply = data.content?.[0]?.text || "Got it.";
+
+    } catch {
+      reply = "Got it.";
+    }
 
     sessions[sid].push({ role: "assistant", content: reply });
   }
@@ -297,5 +302,4 @@ app.all("/twilio-voice", async (req, res) => {
 `);
 });
 
-// START SERVER
 app.listen(process.env.PORT || 3000);
