@@ -48,7 +48,7 @@ app.get("/dashboard", (req, res) => {
 app.get("/leads", (req, res) => res.json(leads));
 
 // =========================
-// ELEVENLABS
+// ELEVENLABS (UPDATED VOICE)
 // =========================
 app.post("/tts", async (req, res) => {
   try {
@@ -62,9 +62,10 @@ app.post("/tts", async (req, res) => {
         text: req.body.text,
         model_id: "eleven_turbo_v2",
         voice_settings: {
-          stability: 0.35,
-          similarity_boost: 0.8,
-          style: 0.6,
+          stability: 0.25,
+          similarity_boost: 0.85,
+          style: 0.75,
+          speed: 1.12,
           use_speaker_boost: true
         }
       })
@@ -126,17 +127,12 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// WHISPER (UPDATED - YOU HEAR ADDRESS)
+// WHISPER
 // =========================
 app.post("/whisper", (req, res) => {
-  const sid = req.body.CallSid;
-
-  const session = sessions[sid] || {};
-  const address = session.address || "no address";
-
   res.type("text/xml").send(`
 <Response>
-  <Say>New lead. ${address}.</Say>
+  <Say>New inbound lead. You're connected.</Say>
 </Response>
 `);
 });
@@ -152,15 +148,12 @@ app.all("/twilio-voice", async (req, res) => {
   if (!sessions[sid]) sessions[sid] = [];
   if (!callState[sid]) callState[sid] = { introDone: false };
 
-  // ✅ store address for whisper
-  sessions[sid].address = address;
-
   let reply;
 
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
 
-    reply = "Hey — you had filled something out about getting an offer on " + address + ", I just wanted to follow up.";
+    reply = "Hey, this is Jack from Blackline Acquisitions out of Farmington — you had filled something out about getting an offer on your place at " + address + ", just wanted to follow up real quick.";
 
   } else if (!input) {
 
@@ -184,31 +177,28 @@ app.all("/twilio-voice", async (req, res) => {
         system: `
 You are Jack from Blackline Acquisitions in Farmington.
 
-You are speaking to a homeowner who filled out a form.
+You are calling someone who filled out a form. This is a casual follow-up.
 
-Speak like a real person on the phone.
-
-RULES:
-- Never describe actions
-- Never include stage directions
-- Never say things like "AI", "system", "hold music", "transfering call", "etc"
-- Never use asterisks or brackets
-- Never say "hey" or "What's up" or "how are you" more than once
-- Never narrate what you're doing
-- Only speak actual dialogue
+GOAL:
+- keep it light
+- feel things out
+- move toward "let me grab Chris" naturally
 
 STYLE:
-- relaxed
-- conversational
-- natural
-- fast toned
-- slightly imperfect
+- relaxed, conversational
+- 1–2 sentences max
+- natural, slightly imperfect
+- use light fillers: "yeah", "gotcha", "okay", "honestly"
 
-If they show interest, say naturally:
+DO NOT:
+- ask about price, mortgage, or finances
+- interrogate or ask multiple questions
+- repeat yourself
+- repeat what the user said
+- use meta language (AI, system, etc.)
+
+If they show interest, say:
 "let me grab Chris real quick"
-
-Do not sound formal.
-Do not repeat the address unnecessarily.
 `,
         messages: sessions[sid]
       })
@@ -223,17 +213,19 @@ Do not repeat the address unnecessarily.
       }
     }
 
-    reply = text.trim();
+    reply = text.trim() || "Yeah — what’s got you looking into it?";
 
-    if (!reply) {
-      reply = "Yeah — what were you thinking on it?";
+    // 🔥 prevent repeating
+    const last = sessions[sid].slice(-1)[0]?.content || "";
+    if (reply.toLowerCase() === last.toLowerCase()) {
+      reply = "yeah gotcha — what’s got you looking into it?";
     }
 
     sessions[sid].push({ role: "assistant", content: reply });
   }
 
   // =========================
-  // TRANSFER (UNCHANGED, JUST ADDED answerOnBridge)
+  // TRANSFER
   // =========================
   if (reply.toLowerCase().includes("grab chris")) {
 
@@ -252,7 +244,7 @@ Do not repeat the address unnecessarily.
     return res.type("text/xml").send(`
 <Response>
   ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>Connecting you now</Say>`}
-  <Dial answerOnBridge="true">
+  <Dial>
     <Number url="${BASE_URL}/whisper">${CHRIS_NUMBER}</Number>
   </Dial>
 </Response>
