@@ -48,7 +48,7 @@ app.get("/dashboard", (req, res) => {
 });
 
 // =========================
-// ELEVENLABS
+// ELEVENLABS (VOICE)
 // =========================
 app.post("/tts", async (req, res) => {
   try {
@@ -126,7 +126,7 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// WHISPER
+// WHISPER (TO YOU)
 // =========================
 app.post("/whisper", (req, res) => {
   res.type("text/xml").send(`
@@ -150,7 +150,7 @@ app.all("/twilio-voice", async (req, res) => {
   let reply;
 
   // =========================
-  // INTRO STAGE 1 (ASK NAME)
+  // INTRO STEP 1
   // =========================
   if (callState[sid].introStage === 0) {
     callState[sid].introStage = 1;
@@ -158,7 +158,7 @@ app.all("/twilio-voice", async (req, res) => {
   }
 
   // =========================
-  // INTRO STAGE 2 (EXPLAIN)
+  // INTRO STEP 2
   // =========================
   else if (callState[sid].introStage === 1) {
     callState[sid].introStage = 2;
@@ -166,29 +166,13 @@ app.all("/twilio-voice", async (req, res) => {
   }
 
   // =========================
-  // NORMAL CONVO
+  // NORMAL CONVERSATION
   // =========================
   else if (!input) {
     reply = "yeah go ahead — I got you";
   } else {
+
     sessions[sid].push({ role: "user", content: input });
-
-    const lower = (input || "").toLowerCase();
-
-    const gaveTime =
-      lower.includes("am") ||
-      lower.includes("pm") ||
-      lower.includes("tomorrow") ||
-      lower.includes("today") ||
-      lower.includes("tonight") ||
-      lower.match(/\d{1,2}/);
-
-    const interested =
-      lower.includes("yes") ||
-      lower.includes("yeah") ||
-      lower.includes("interested") ||
-      lower.includes("maybe") ||
-      lower.includes("sure");
 
     const ai = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -199,76 +183,54 @@ app.all("/twilio-voice", async (req, res) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-5",
-        max_tokens: 170,
-        temperature: 0.9,
+        max_tokens: 120,
+        temperature: 0.85,
         system: `
 You are Jack from Blackline Acquisitions.
 
-You are calling about a property at: ${address}.
-They already filled out a form — this is a casual follow-up.
+You are calling about ${address}. They filled out a form.
+
+You are having a NORMAL HUMAN conversation.
 
 GOALS:
-- have a normal, relaxed conversation
 - build light rapport
-- see if they’d consider selling
-- move toward Chris coming to take a look
+- understand if they'd consider selling
+- guide toward Chris seeing the property
 
 TONE:
+- relaxed
 - friendly
-- easygoing
 - conversational
 - not scripted
-- not pushy
 
 IMPORTANT:
-- respond to what they actually say
-- do not wait for yes/no answers
-- always ask their timeline
-- do not book an appointment without confirming both the day and time
-- do not sound like a script
-- keep it natural and flowing
-
-RAPPORT:
-- acknowledge naturally:
-  "yeah gotcha", "makes sense", "I hear you", "no worries"
-- short reactions are good
-- make polite side comments when they describe their situation to build rapport often
-- not every response needs a question
+- respond naturally to what they say
+- do not act like a bot waiting for yes/no
+- not every reply needs a question
 
 BOUNDARIES:
-- NEVER ask if they are "just exploring" or "weighing options"
-- NEVER ask how long they’ve lived there
-- NEVER ask about price, mortgage, or personal details
-- do not interrogate
+- do not ask how long they’ve lived there
+- do not ask about price, mortgage, or personal details
 
-QUALIFY (natural, low pressure):
-If it fits the conversation, say:
-"gotcha — if we came in with something that made sense, is that something you’d consider?"
+CHRIS:
+Mention naturally:
+"honestly Chris is the guy who handles everything — he’d just come by and take a look"
 
-CHRIS POSITIONING:
-Mention Chris naturally as the expert:
+FLOW:
+- react → relate → guide
+- don’t rush
 
-Example:
-"honestly Chris is the guy who handles all that — he’d just come by, take a look, and give you a real number"
+QUALIFY:
+"if we came in with something that made sense, is that something you’d consider?"
 
 SHOWING:
-Once they seem open, transition casually:
-
-"yeah at that point Chris could just swing by and take a look — what usually works best for you timing-wise?"
+"what usually works best for you timing-wise for Chris to swing by?"
 
 BOOKING:
-If they give a time:
 "perfect — we’ll shoot you a quick text a few hours before just to confirm"
 
 TRANSFER:
-If they want someone now:
 "yeah for sure — let me grab Chris real quick"
-
-STYLE:
-- keep responses short (1–2 sentences usually)
-- don’t stack questions
-- don’t rush
-- don’t repeat yourself or them
 `,
         messages: sessions[sid]
       })
@@ -283,20 +245,25 @@ STYLE:
       }
     }
 
-    reply = text.trim() || "gotcha — what’s got you thinking about it?";
+    reply = text.trim() || "yeah gotcha — what’s got you thinking about it?";
 
-    // =========================
-    // BOOKING LOGIC
-    // =========================
+    // ONLY override when necessary (booking)
+    const lower = input.toLowerCase();
+
+    const gaveTime =
+      lower.includes("am") ||
+      lower.includes("pm") ||
+      lower.includes("tomorrow") ||
+      lower.includes("today") ||
+      lower.match(/\d{1,2}/);
+
     if (gaveTime) {
-      reply = "perfect — we’ll follow up with you a few hours prior via text just to confirm";
-    } else if (interested && !lower.includes("sell")) {
-      reply = "no worries — I or Chris can call you back when better convenient";
+      reply = "perfect — we’ll shoot you a quick text a few hours before just to confirm";
     }
 
-    // block bad phrasing
-    if (reply.toLowerCase().includes("call")) {
-      reply = "gotcha — let's see what we can do, what’s a good time to take a look at it?";
+    // safety: block dumb questions
+    if (reply.toLowerCase().includes("how long")) {
+      reply = "gotcha — if we came in with something that made sense, is that something you’d consider?";
     }
 
     sessions[sid].push({ role: "assistant", content: reply });
@@ -328,6 +295,9 @@ STYLE:
 `);
   }
 
+  // =========================
+  // NORMAL RESPONSE
+  // =========================
   let audioUrl = null;
 
   try {
