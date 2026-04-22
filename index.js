@@ -12,7 +12,6 @@ app.use(express.static(__dirname));
 // MEMORY + STATE
 // =========================
 const sessions = {};
-const recordings = {};
 const callState = {};
 
 let leads = [
@@ -30,25 +29,7 @@ const CHRIS_NUMBER = process.env.CHRIS_NUMBER;
 app.get("/", (req, res) => res.send("RUNNING"));
 
 // =========================
-// DASHBOARD
-// =========================
-app.get("/dashboard", (req, res) => {
-  res.send(`
-  <html>
-  <body style="background:#000;color:#fff;font-family:sans-serif;">
-    <div style="max-width:800px;margin:auto;padding:40px;">
-      <img src="/logo.png" style="height:220px;display:block;margin:auto;">
-      <button onclick="fetch('/start-calls')" style="margin-top:30px;padding:15px;background:#fff;color:#000;font-weight:bold;border:none;border-radius:10px;">START CALLING</button>
-    </div>
-  </body>
-  </html>
-  `);
-});
-
-app.get("/leads", (req, res) => res.json(leads));
-
-// =========================
-// ELEVENLABS (UPDATED VOICE)
+// ELEVENLABS (MORE HUMAN)
 // =========================
 app.post("/tts", async (req, res) => {
   try {
@@ -62,16 +43,14 @@ app.post("/tts", async (req, res) => {
         text: req.body.text,
         model_id: "eleven_turbo_v2",
         voice_settings: {
-          stability: 0.25,
-          similarity_boost: 0.85,
-          style: 0.75,
-          speed: 1.12,
+          stability: 0.2,
+          similarity_boost: 0.9,
+          style: 0.85,
+          speed: 1.15,
           use_speaker_boost: true
         }
       })
     });
-
-    if (!r.ok) throw new Error();
 
     const audio = await r.arrayBuffer();
     const file = "speech_" + Date.now() + ".mp3";
@@ -79,7 +58,6 @@ app.post("/tts", async (req, res) => {
     fs.writeFileSync(path.join(__dirname, file), Buffer.from(audio));
 
     res.json({ url: BASE_URL + "/" + file });
-
   } catch {
     res.json({ url: null });
   }
@@ -150,16 +128,22 @@ app.all("/twilio-voice", async (req, res) => {
 
   let reply;
 
+  // =========================
+  // INTRO
+  // =========================
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
 
-    reply = "Hey, this is Jack from Blackline Acquisitions out of Farmington — you had filled something out about getting an offer on your place at " + address + ", just wanted to follow up real quick.";
+    reply = "Hey — this is Jack from Blackline… you had filled something out about getting an offer on your place, just wanted to follow up real quick.";
 
-  } else if (!input) {
-
-    reply = "Hey sorry, go ahead.";
-
-  } else {
+  } 
+  // =========================
+  // INTERRUPTION HANDLING
+  // =========================
+  else if (!input) {
+    reply = "yeah go ahead — I got you";
+  } 
+  else {
 
     sessions[sid].push({ role: "user", content: input });
 
@@ -173,31 +157,33 @@ app.all("/twilio-voice", async (req, res) => {
       body: JSON.stringify({
         model: "claude-sonnet-4-5",
         max_tokens: 120,
-        temperature: 0.8,
+        temperature: 0.9,
         system: `
-You are Jack from Blackline Acquisitions in Farmington.
+You are Jack from Blackline.
 
-You are calling someone who filled out a form. This is a casual follow-up.
+Sound like a real human, not a bot.
 
-GOAL:
-- keep it light
-- feel things out
-- move toward "let me grab Chris" naturally
+TONE:
+- relaxed
+- slightly messy
+- conversational
+
+IMPORTANT:
+- mirror their tone (if short, be short. if casual, be casual)
+- acknowledge emotion subtly (frustrated, unsure, curious, etc.)
+
+RULES:
+- never ask about price, mortgage, or finances
+- never repeat yourself
+- never repeat them
+- never sound scripted
 
 STYLE:
-- relaxed, conversational
-- 1–2 sentences max
-- natural, slightly imperfect
-- use light fillers: "yeah", "gotcha", "okay", "honestly"
+- short responses (1–2 sentences)
+- sometimes just react instead of asking
 
-DO NOT:
-- ask about price, mortgage, or finances
-- interrogate or ask multiple questions
-- repeat yourself
-- repeat what the user said
-- use meta language (AI, system, etc.)
-
-If they show interest, say:
+TRANSFER:
+If they seem interested:
 "let me grab Chris real quick"
 `,
         messages: sessions[sid]
@@ -213,12 +199,22 @@ If they show interest, say:
       }
     }
 
-    reply = text.trim() || "Yeah — what’s got you looking into it?";
+    reply = text.trim() || "yeah gotcha — what’s got you looking into it?";
 
-    // 🔥 prevent repeating
+    // =========================
+    // HUMANIZER
+    // =========================
+    if (Math.random() < 0.3) {
+      const fillers = ["yeah ", "okay ", "gotcha ", "honestly "];
+      reply = fillers[Math.floor(Math.random() * fillers.length)] + reply;
+    }
+
+    // =========================
+    // ANTI-REPEAT
+    // =========================
     const last = sessions[sid].slice(-1)[0]?.content || "";
     if (reply.toLowerCase() === last.toLowerCase()) {
-      reply = "yeah gotcha — what’s got you looking into it?";
+      reply = "yeah gotcha — what’s got you thinking about it?";
     }
 
     sessions[sid].push({ role: "assistant", content: reply });
@@ -235,7 +231,7 @@ If they show interest, say:
       const tts = await fetch(BASE_URL + "/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: "Cool — I’ll grab Chris real quick and he’ll get you situated." })
+        body: JSON.stringify({ text: "cool — I’ll grab Chris real quick" })
       });
 
       audioUrl = (await tts.json()).url;
@@ -243,7 +239,7 @@ If they show interest, say:
 
     return res.type("text/xml").send(`
 <Response>
-  ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>Connecting you now</Say>`}
+  ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>Connecting</Say>`}
   <Dial>
     <Number url="${BASE_URL}/whisper">${CHRIS_NUMBER}</Number>
   </Dial>
@@ -265,7 +261,7 @@ If they show interest, say:
 
   res.type("text/xml").send(`
 <Response>
-  <Gather input="speech" speechTimeout="auto" timeout="5" method="POST"
+  <Gather input="speech" speechTimeout="auto" timeout="4" method="POST"
     action="/twilio-voice?address=${encodeURIComponent(address)}">
     ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>${reply}</Say>`}
   </Gather>
