@@ -144,20 +144,6 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// WHISPER (ONLY CHRIS HEARS)
-// =========================
-app.post("/whisper", (req, res) => {
-  const name = req.query.name || "unknown";
-  const address = req.query.address || "no address";
-
-  res.type("text/xml").send(`
-<Response>
-  <Say>New lead. ${name}. ${address}.</Say>
-</Response>
-`);
-});
-
-// =========================
 // AI VOICE
 // =========================
 app.all("/twilio-voice", async (req, res) => {
@@ -235,7 +221,7 @@ If they show interest, say:
   }
 
   // =========================
-  // QUALIFIED TRANSFER + WHISPER
+  // 🔥 QUALIFIED TRANSFER
   // =========================
   const r = (reply || "").toLowerCase();
   const u = (input || "").toLowerCase();
@@ -272,11 +258,7 @@ If they show interest, say:
     return res.type("text/xml").send(`
 <Response>
   ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>Connecting you now</Say>`}
-  <Dial answerOnBridge="true">
-    <Number url="${BASE_URL}/whisper?name=${encodeURIComponent(name || "")}&address=${encodeURIComponent(address)}">
-      ${CHRIS_NUMBER}
-    </Number>
-  </Dial>
+  <Dial>${CHRIS_NUMBER}</Dial>
 </Response>
 `);
   }
