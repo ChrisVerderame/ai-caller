@@ -8,11 +8,13 @@ app.get("/", (req, res) => {
   res.send("Server running");
 });
 
-// 🧠 AI VOICE HANDLER (UPDATED)
+// 🧠 AI VOICE HANDLER (FIXED)
 app.post("/twilio-voice", async (req, res) => {
   const userInput = req.body.SpeechResult || "Hello";
 
   console.log("User said:", userInput);
+
+  let reply = "Sorry, I had trouble responding.";
 
   try {
     const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
@@ -31,15 +33,15 @@ app.post("/twilio-voice", async (req, res) => {
             content: `
 You are a real estate acquisitions assistant calling a homeowner.
 
-Start naturally like:
-"Hey, this is about the property you submitted online — did I catch you at a bad time?"
+Start like:
+"Hey, this is about the property you submitted — did I catch you at a bad time?"
 
-Then:
-- Ask timeline
-- Ask condition
-- Ask motivation
-- Keep it short and natural
-- Sound human, not robotic
+Ask:
+- timeline
+- condition
+- motivation
+
+Keep it short and natural.
 `
           },
           {
@@ -51,28 +53,27 @@ Then:
     });
 
     const data = await aiResponse.json();
-    const reply = data.content[0].text;
 
-    console.log("AI reply:", reply);
+    console.log("RAW AI RESPONSE:", JSON.stringify(data));
 
-    res.type("text/xml");
-    res.send(`
-      <Response>
-        <Gather input="speech" action="/twilio-voice" method="POST">
-          <Say>${reply}</Say>
-        </Gather>
-      </Response>
-    `);
+    if (data.content && data.content.length > 0) {
+      reply = data.content[0].text;
+    } else {
+      console.error("Bad AI response:", data);
+    }
+
   } catch (err) {
     console.error("AI error:", err);
-
-    res.type("text/xml");
-    res.send(`
-      <Response>
-        <Say>Sorry, something went wrong.</Say>
-      </Response>
-    `);
   }
+
+  res.type("text/xml");
+  res.send(`
+    <Response>
+      <Gather input="speech" action="/twilio-voice" method="POST">
+        <Say>${reply}</Say>
+      </Gather>
+    </Response>
+  `);
 });
 
 // 👉 THIS TRIGGERS A CALL
@@ -84,7 +85,7 @@ app.get("/call", async (req, res) => {
   console.log("SID:", process.env.TWILIO_SID);
   console.log("AUTH:", process.env.TWILIO_AUTH ? "exists" : "missing");
 
-  const to = "+12038334544"; // your verified number
+  const to = "+12038334544";
 
   const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`;
 
