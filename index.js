@@ -28,7 +28,7 @@ const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 app.get("/", (req, res) => res.send("RUNNING"));
 
 // =========================
-// DASHBOARD (YOUR UI BACK)
+// DASHBOARD (RESTORED)
 // =========================
 app.get("/dashboard", (req, res) => {
   res.send(`
@@ -158,7 +158,7 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// AI VOICE (WORKING + FOLLOW-UP)
+// AI VOICE (FIXED)
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -170,16 +170,23 @@ app.all("/twilio-voice", async (req, res) => {
 
   let reply;
 
+  // INTRO
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
-
     reply = "Hey, this is Jack from Blackline Acquisitions out of Farmington — you filled something out about getting an offer on your place at " + address + ", just wanted to follow up.";
   }
+
   else if (!input) {
-    reply = "Go ahead.";
+    reply = "Hey sorry, go ahead.";
   }
+
   else {
     sessions[sid].push({ role: "user", content: input });
+
+    // 🔥 LIMIT MEMORY
+    if (sessions[sid].length > 12) {
+      sessions[sid] = sessions[sid].slice(-8);
+    }
 
     const ai = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -190,34 +197,45 @@ app.all("/twilio-voice", async (req, res) => {
       },
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",
-        max_tokens: 60,
+        max_tokens: 80,
         temperature: 0.8,
         system: `
-You are Jack from Blackline Acquisitions.
+You are Jack from Blackline Acquisitions in Farmington.
 
-This is a follow-up call.
+This is a follow-up call from a form they filled out.
+
+Be natural, short, and conversational.
 
 Goal:
-- qualify
-- move toward appointment
-- transfer if serious
+- confirm interest
+- understand timeline
+- move toward appointment or transfer
 
-Be casual and natural.
+Ask one question at a time.
 `,
         messages: sessions[sid]
       })
     });
 
     const data = await ai.json();
+    console.log("AI RAW:", JSON.stringify(data));
 
     let text = "";
+
     if (data?.content) {
-      for (const b of data.content) {
-        if (b.type === "text") text += b.text;
+      for (const block of data.content) {
+        if (block.type === "text" && block.text) {
+          text += block.text;
+        }
       }
     }
 
-    reply = text.trim() || "What were you thinking?";
+    reply = text.trim();
+
+    if (!reply) {
+      reply = "Gotcha — are you still looking to sell or just seeing what kind of offers you'd get?";
+    }
+
     sessions[sid].push({ role: "assistant", content: reply });
   }
 
