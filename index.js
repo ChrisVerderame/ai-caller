@@ -6,83 +6,31 @@ const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// 🧠 MEMORY
+// 🧠 MEMORY (per call)
 const sessions = {};
 
-// 🧠 TEMP LEADS
+// 🧠 LEADS (replace later with Sheets)
 let leads = [
-  { phone: "+12038334544", address: "123 Main St" }
+  { phone: "+12038334544", address: "123 Main St" },
+  { phone: "+18605551234", address: "22 Main St" }
 ];
 
 let queue = [];
+let callCount = 0;
 
 // 👉 TEST ROUTE
 app.get("/", (req, res) => {
   res.send("Server running");
 });
 
-// 🔥 DASHBOARD
-app.get("/dashboard", (req, res) => {
-  res.send(`
-    <html>
-      <head>
-        <title>AI Caller</title>
-        <style>
-          body {
-            font-family: Arial;
-            background: #0f172a;
-            color: white;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-          }
-          .card {
-            background: #1e293b;
-            padding: 40px;
-            border-radius: 12px;
-            text-align: center;
-          }
-          button {
-            width: 100%;
-            padding: 12px;
-            margin: 10px 0;
-            border-radius: 8px;
-            border: none;
-            font-size: 16px;
-            cursor: pointer;
-          }
-          .start { background: #22c55e; color: black; }
-          .test { background: #3b82f6; color: white; }
-        </style>
-      </head>
-      <body>
-        <div class="card">
-          <h1>AI Caller</h1>
-          <button class="start" onclick="start()">Start Calls</button>
-          <button class="test" onclick="test()">Test Call</button>
-          <p id="status"></p>
-        </div>
 
-        <script>
-          async function start() {
-            document.getElementById("status").innerText = "Starting...";
-            await fetch("/start-calls");
-            document.getElementById("status").innerText = "Calling...";
-          }
-
-          async function test() {
-            document.getElementById("status").innerText = "Calling...";
-            await fetch("/call");
-            document.getElementById("status").innerText = "Call sent";
-          }
-        </script>
-      </body>
-    </html>
-  `);
+// 🔥 LEADS API
+app.get("/leads", (req, res) => {
+  res.json(leads);
 });
 
-// 🔥 START CALLS
+
+// 🔥 START AUTO CALLS
 app.get("/start-calls", async (req, res) => {
   queue = [...leads].sort(() => Math.random() - 0.5);
   processQueue();
@@ -101,7 +49,44 @@ async function processQueue() {
   setTimeout(processQueue, 15000);
 }
 
-// 🔥 AI VOICE (FIXED SPEECH)
+
+// 🔥 MANUAL CALL
+app.get("/call", async (req, res) => {
+  const accountSid = process.env.TWILIO_SID;
+  const authToken = process.env.TWILIO_AUTH;
+  const from = process.env.TWILIO_NUMBER;
+
+  const to = req.query.to || "+12038334544";
+  const address = req.query.address || "your property";
+
+  console.log("Calling:", to);
+
+  const params = new URLSearchParams({
+    To: to,
+    From: from,
+    Url: `https://ai-caller-production-88df.up.railway.app/twilio-voice?address=${encodeURIComponent(address)}`
+  });
+
+  const response = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`,
+    {
+      method: "POST",
+      headers: {
+        Authorization:
+          "Basic " + Buffer.from(accountSid + ":" + authToken).toString("base64"),
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: params
+    }
+  );
+
+  callCount++;
+
+  res.send(await response.text());
+});
+
+
+// 🔥 AI VOICE HANDLER (STABLE + SPEECH FIXED)
 app.all("/twilio-voice", async (req, res) => {
   try {
     const userInput = req.body.SpeechResult;
@@ -123,7 +108,7 @@ app.all("/twilio-voice", async (req, res) => {
             language="en-US"
             action="https://ai-caller-production-88df.up.railway.app/twilio-voice?address=${encodeURIComponent(address)}"
             method="POST">
-            <Say>I didn’t catch that, can you say that again?</Say>
+            <Say>I didn’t catch that, can you repeat?</Say>
           </Gather>
         </Response>
       `);
@@ -149,8 +134,8 @@ You are a real estate acquisitions caller.
 
 Property: ${address}
 
-Talk like a normal human.
-Keep it short.
+Talk casually like a real human.
+Short responses. One question at a time.
 `,
           messages: sessions[callSid]
         })
@@ -194,35 +179,160 @@ Keep it short.
   }
 });
 
-// 🔥 CALL
-app.get("/call", async (req, res) => {
-  const accountSid = process.env.TWILIO_SID;
-  const authToken = process.env.TWILIO_AUTH;
-  const from = process.env.TWILIO_NUMBER;
 
-  const to = req.query.to || "+12038334544";
-  const address = req.query.address || "your property";
+// 🔥 ELITE DASHBOARD
+app.get("/dashboard", (req, res) => {
+  res.send(`
+  <html>
+  <head>
+    <title>AI Caller</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: -apple-system, sans-serif;
+        background: #0b0f19;
+        color: white;
+        display: flex;
+      }
 
-  const params = new URLSearchParams({
-    To: to,
-    From: from,
-    Url: `https://ai-caller-production-88df.up.railway.app/twilio-voice?address=${encodeURIComponent(address)}`
-  });
+      .sidebar {
+        width: 240px;
+        background: #020617;
+        padding: 24px;
+        height: 100vh;
+      }
 
-  const response = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`,
-    {
-      method: "POST",
-      headers: {
-        Authorization:
-          "Basic " + Buffer.from(accountSid + ":" + authToken).toString("base64"),
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: params
-    }
-  );
+      .logo {
+        font-size: 20px;
+        margin-bottom: 30px;
+      }
 
-  res.send(await response.text());
+      .main {
+        flex: 1;
+        padding: 30px;
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 30px;
+      }
+
+      .btn {
+        background: linear-gradient(135deg,#3b82f6,#6366f1);
+        border: none;
+        padding: 10px 18px;
+        border-radius: 10px;
+        color: white;
+        cursor: pointer;
+      }
+
+      .cards {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 30px;
+      }
+
+      .card {
+        background: #111827;
+        padding: 20px;
+        border-radius: 14px;
+        width: 200px;
+      }
+
+      table {
+        width: 100%;
+      }
+
+      td, th {
+        padding: 12px;
+      }
+
+      .call-btn {
+        background: #22c55e;
+        border: none;
+        padding: 6px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+
+  <body>
+
+    <div class="sidebar">
+      <div class="logo">AI Caller</div>
+    </div>
+
+    <div class="main">
+
+      <div class="topbar">
+        <h1>Dashboard</h1>
+        <button class="btn" onclick="start()">Start Calling</button>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <h2 id="total">0</h2>
+          <p>Leads</p>
+        </div>
+        <div class="card">
+          <h2 id="calls">0</h2>
+          <p>Calls</p>
+        </div>
+      </div>
+
+      <table id="table">
+        <tr>
+          <th>Phone</th>
+          <th>Address</th>
+          <th></th>
+        </tr>
+      </table>
+
+    </div>
+
+    <script>
+      let calls = 0;
+
+      async function load() {
+        const res = await fetch("/leads");
+        const data = await res.json();
+
+        document.getElementById("total").innerText = data.length;
+
+        const table = document.getElementById("table");
+
+        data.forEach(l => {
+          const row = document.createElement("tr");
+
+          row.innerHTML = \`
+            <td>\${l.phone}</td>
+            <td>\${l.address}</td>
+            <td><button class="call-btn" onclick="callLead('\${l.phone}','\${l.address}')">Call</button></td>
+          \`;
+
+          table.appendChild(row);
+        });
+      }
+
+      async function callLead(phone, address) {
+        await fetch(\`/call?to=\${phone}&address=\${encodeURIComponent(address)}\`);
+        calls++;
+        document.getElementById("calls").innerText = calls;
+      }
+
+      async function start() {
+        await fetch("/start-calls");
+      }
+
+      load();
+    </script>
+
+  </body>
+  </html>
+  `);
 });
+
 
 app.listen(process.env.PORT || 3000);
