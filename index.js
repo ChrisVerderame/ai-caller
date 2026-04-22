@@ -17,7 +17,7 @@ let callCount = 0;
 // 🔥 LOAD LEADS FROM APPS SCRIPT
 async function loadLeads() {
   try {
-    const res = await fetch("PASTE_YOUR_APPS_SCRIPT_URL_HERE");
+    const res = await fetch("https://script.google.com/u/0/home/projects/1Tz9TPDK-yntwss_R9MUsYHlcrXHDlgnoeWFQCTQ-fX0h7fINstCmeVrg/edit");
     const data = await res.json();
 
     leads = data.map(l => ({
