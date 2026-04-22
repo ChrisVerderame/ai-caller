@@ -29,7 +29,7 @@ const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 app.get("/", (req, res) => res.send("RUNNING"));
 
 // =========================
-// DASHBOARD (UNCHANGED)
+// DASHBOARD
 // =========================
 app.get("/dashboard", (req, res) => {
   res.send(`
@@ -82,7 +82,7 @@ app.get("/dashboard", (req, res) => {
 app.get("/leads", (req, res) => res.json(leads));
 
 // =========================
-// ELEVENLABS (FAST)
+// ELEVENLABS (VOICE UPDATED)
 // =========================
 app.post("/tts", async (req, res) => {
   try {
@@ -163,7 +163,7 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// AI VOICE (FAST + FIXED)
+// AI VOICE (FIXED PARSING + LOOP)
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -193,26 +193,42 @@ app.all("/twilio-voice", async (req, res) => {
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-3-haiku-20240307", // ⚡ FAST MODEL
+        model: "claude-3-haiku-20240307",
         max_tokens: 60,
         temperature: 0.8,
         system: `
 You are a casual real estate investor.
 
-Be fast, natural, and human.
+Be natural, quick, and human.
 
 Rules:
 - 1 sentence preferred
 - Ask 1 question max
 - No fluff
-- Move conversation forward
+- Move forward
 `,
         messages: sessions[sid]
       })
     });
 
     const data = await ai.json();
-    reply = data.content?.[0]?.text || "Got it.";
+    console.log("AI RAW:", JSON.stringify(data));
+
+    let text = "";
+
+    if (data && data.content && Array.isArray(data.content)) {
+      for (const block of data.content) {
+        if (block.type === "text") {
+          text += block.text;
+        }
+      }
+    }
+
+    reply = text.trim();
+
+    if (!reply) {
+      reply = "Yeah, sorry — go ahead.";
+    }
 
     sessions[sid].push({ role: "assistant", content: reply });
   }
@@ -236,7 +252,7 @@ Rules:
     
     ${audioUrl 
       ? `<Play>${audioUrl}</Play>` 
-      : `<Say>One sec...</Say>`}
+      : `<Say>${reply}</Say>`}
       
   </Gather>
 </Response>
