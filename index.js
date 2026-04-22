@@ -197,7 +197,7 @@ app.all("/twilio-voice", async (req, res) => {
         max_tokens: 120,
         temperature: 0.8,
         system: `
-You are Jack from Blackline Acquisitions in Farmington.
+You are Nigga from Blackline Acquisitions in Farmington.
 
 You are calling about a property at: ${address}
 
