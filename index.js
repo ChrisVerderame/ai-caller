@@ -1,9 +1,6 @@
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
-const fetch = require("node-fetch");
-const fs = require("fs");
-const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
@@ -11,15 +8,8 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-app.use(express.static(__dirname));
 
 const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
-
-// =========================
-// MEMORY
-// =========================
-const sessions = {};
-const callState = {};
 
 // =========================
 // ROOT
@@ -27,23 +17,23 @@ const callState = {};
 app.get("/", (req, res) => res.send("RUNNING"));
 
 // =========================
-// DASHBOARD (UNCHANGED)
+// DASHBOARD (SIMPLE)
 // =========================
 app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
   <body style="background:black;color:white;font-family:sans-serif;">
     <h2>BLACKLINE CALLER</h2>
-    <button onclick="fetch('/start-calls')">START</button>
+    <button onclick="fetch('/call-test')">TEST CALL</button>
   </body>
   </html>
   `);
 });
 
 // =========================
-// TWILIO CALL (STREAM MODE)
+// TWILIO CALL (STREAM)
 // =========================
-app.get("/call", (req, res) => {
+app.get("/call-test", (req, res) => {
   res.type("text/xml").send(`
 <Response>
   <Connect>
@@ -54,15 +44,17 @@ app.get("/call", (req, res) => {
 });
 
 // =========================
-// MEDIA STREAM (SAFE)
+// MEDIA STREAM
 // =========================
 wss.on("connection", (ws) => {
-  console.log("STREAM CONNECTED");
+  console.log("🔌 STREAM CONNECTED");
 
-  let dgSocket = null;
+  let dgSocket;
   let conversation = [];
 
-  // ✅ SAFE DEEPGRAM INIT
+  // =========================
+  // CONNECT DEEPGRAM (SAFE)
+  // =========================
   if (process.env.DEEPGRAM_KEY) {
     try {
       dgSocket = new WebSocket(
@@ -86,13 +78,13 @@ wss.on("connection", (ws) => {
 
         if (!transcript || transcript.length < 2) return;
 
-        console.log("USER:", transcript);
+        console.log("🧠 USER:", transcript);
 
         conversation.push({ role: "user", content: transcript });
 
         const reply = await getAI(conversation);
 
-        console.log("AI:", reply);
+        console.log("🤖 AI:", reply);
 
         conversation.push({ role: "assistant", content: reply });
 
@@ -100,13 +92,15 @@ wss.on("connection", (ws) => {
       });
 
     } catch (err) {
-      console.log("DEEPGRAM ERROR:", err.message);
+      console.log("❌ Deepgram error:", err.message);
     }
   } else {
-    console.log("NO DEEPGRAM KEY (stream will not transcribe)");
+    console.log("⚠️ NO DEEPGRAM KEY");
   }
 
-  // ✅ SAFE TWILIO AUDIO HANDLING
+  // =========================
+  // RECEIVE AUDIO FROM TWILIO
+  // =========================
   ws.on("message", (msg) => {
     let data;
     try {
@@ -121,6 +115,11 @@ wss.on("connection", (ws) => {
         dgSocket.send(audio);
       } catch {}
     }
+  });
+
+  ws.on("close", () => {
+    console.log("🔌 STREAM CLOSED");
+    if (dgSocket) dgSocket.close();
   });
 });
 
@@ -143,17 +142,17 @@ async function getAI(messages) {
         system: `
 You are Jack from Blackline Acquisitions in Farmington.
 
-This is a follow-up call from a form they filled out.
+This is a follow-up call. The homeowner filled out a form.
 
 Goal:
+- confirm interest
 - qualify lead
-- set appointment
-- transfer to Chris if serious
+- move toward appointment or transfer to Chris
 
 Tone:
-- relaxed
+- casual
 - confident
-- natural
+- not salesy
 `,
         messages
       })
@@ -165,22 +164,20 @@ Tone:
 
     if (data && data.content && Array.isArray(data.content)) {
       for (const block of data.content) {
-        if (block.type === "text") {
-          text += block.text;
-        }
+        if (block.type === "text") text += block.text;
       }
     }
 
     return text.trim() || "Gotcha — what were you thinking?";
 
   } catch (err) {
-    console.log("AI ERROR:", err.message);
-    return "Hey — can you say that again?";
+    console.log("❌ AI error:", err.message);
+    return "Hey — can you repeat that?";
   }
 }
 
 // =========================
-// STREAM VOICE (SAFE)
+// STREAM VOICE (ELEVEN)
 // =========================
 async function streamVoice(ws, text) {
   try {
@@ -214,13 +211,13 @@ async function streamVoice(ws, text) {
     }
 
   } catch (err) {
-    console.log("TTS STREAM ERROR:", err.message);
+    console.log("❌ TTS error:", err.message);
   }
 }
 
 // =========================
-// SERVER
+// START SERVER
 // =========================
 server.listen(process.env.PORT || 3000, () => {
-  console.log("SERVER RUNNING (STREAM SAFE)");
+  console.log("🚀 SERVER RUNNING (REAL-TIME READY)");
 });
