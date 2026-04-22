@@ -160,7 +160,7 @@ app.all("/twilio-voice", async (req, res) => {
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
 
-    reply = "Hey, this is Jack from Blackline Acquisitions out of Farmington — you had filled something out about getting an offer on your place at " + address + ", just wanted to follow up real quick.";
+    reply = "Hey — you had filled something out about getting an offer on " + address + ", I just wanted to follow up.";
 
   } else if (!input) {
 
