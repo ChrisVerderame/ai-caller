@@ -29,6 +29,24 @@ const CHRIS_NUMBER = process.env.CHRIS_NUMBER;
 app.get("/", (req, res) => res.send("RUNNING"));
 
 // =========================
+// DASHBOARD (FIXED)
+// =========================
+app.get("/dashboard", (req, res) => {
+  res.send(`
+  <html>
+  <body style="background:#000;color:#fff;font-family:sans-serif;">
+    <div style="max-width:800px;margin:auto;padding:40px;text-align:center;">
+      <h1>AI Caller</h1>
+      <button onclick="fetch('/start-calls')" style="margin-top:30px;padding:15px 25px;background:#fff;color:#000;font-weight:bold;border:none;border-radius:10px;cursor:pointer;">
+        START CALLING
+      </button>
+    </div>
+  </body>
+  </html>
+  `);
+});
+
+// =========================
 // ELEVENLABS (MORE HUMAN)
 // =========================
 app.post("/tts", async (req, res) => {
@@ -94,7 +112,9 @@ app.get("/call", async (req, res) => {
     {
       method: "POST",
       headers: {
-        Authorization: "Basic " + Buffer.from(process.env.TWILIO_SID + ":" + process.env.TWILIO_AUTH).toString("base64"),
+        Authorization:
+          "Basic " +
+          Buffer.from(process.env.TWILIO_SID + ":" + process.env.TWILIO_AUTH).toString("base64"),
         "Content-Type": "application/x-www-form-urlencoded"
       },
       body: params
@@ -128,23 +148,15 @@ app.all("/twilio-voice", async (req, res) => {
 
   let reply;
 
-  // =========================
-  // INTRO
-  // =========================
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
 
-    reply = "Hey — this is Jack from Blackline… you had filled something out about getting an offer on your place, just wanted to follow up real quick.";
-
-  } 
-  // =========================
-  // INTERRUPTION HANDLING
-  // =========================
-  else if (!input) {
+    reply =
+      "Hey — this is Jack from Blackline… you had filled something out about getting an offer on your place, just wanted to follow up real quick.";
+  } else if (!input) {
+    // interruption handling
     reply = "yeah go ahead — I got you";
-  } 
-  else {
-
+  } else {
     sessions[sid].push({ role: "user", content: input });
 
     const ai = await fetch("https://api.anthropic.com/v1/messages", {
@@ -169,8 +181,8 @@ TONE:
 - conversational
 
 IMPORTANT:
-- mirror their tone (if short, be short. if casual, be casual)
-- acknowledge emotion subtly (frustrated, unsure, curious, etc.)
+- mirror their tone
+- acknowledge emotion subtly
 
 RULES:
 - never ask about price, mortgage, or finances
@@ -201,17 +213,13 @@ If they seem interested:
 
     reply = text.trim() || "yeah gotcha — what’s got you looking into it?";
 
-    // =========================
-    // HUMANIZER
-    // =========================
+    // humanizer
     if (Math.random() < 0.3) {
       const fillers = ["yeah ", "okay ", "gotcha ", "honestly "];
       reply = fillers[Math.floor(Math.random() * fillers.length)] + reply;
     }
 
-    // =========================
-    // ANTI-REPEAT
-    // =========================
+    // anti-repeat
     const last = sessions[sid].slice(-1)[0]?.content || "";
     if (reply.toLowerCase() === last.toLowerCase()) {
       reply = "yeah gotcha — what’s got you thinking about it?";
@@ -224,7 +232,6 @@ If they seem interested:
   // TRANSFER
   // =========================
   if (reply.toLowerCase().includes("grab chris")) {
-
     let audioUrl = null;
 
     try {
