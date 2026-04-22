@@ -1,4 +1,11 @@
 {
+  "name": "ai-caller",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
     "express": "^4.18.2",
     "ws": "^8.14.2"
