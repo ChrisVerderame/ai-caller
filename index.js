@@ -8,7 +8,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(__dirname));
 
+// =========================
 // MEMORY + DATA
+// =========================
 const sessions = {};
 const recordings = [];
 
@@ -20,40 +22,60 @@ let queue = [];
 
 const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 
-/* =========================
-   ROOT
-========================= */
+// =========================
+// ROOT
+// =========================
 app.get("/", (req, res) => res.send("RUNNING"));
 
-/* =========================
-   DASHBOARD (SAFE)
-========================= */
+// =========================
+// DASHBOARD (YOUR ORIGINAL STYLE)
+// =========================
 app.get("/dashboard", (req, res) => {
   res.send(`
-  <!DOCTYPE html>
   <html>
   <head>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
-      body { background:#000; color:#fff; font-family:sans-serif; padding:40px; }
-      .row { display:flex; justify-content:space-between; margin-bottom:10px; }
-      select { background:#111; color:#fff; }
-      button { padding:10px 20px; margin-bottom:20px; }
+      body { margin:0; background:#000; color:#fff; font-family:'Inter', sans-serif; }
+      .wrap { max-width:800px; margin:auto; padding:50px 20px; }
+      .logo { text-align:center; margin-bottom:30px; }
+      .logo img { height:240px; }
+      .cta { text-align:center; margin-bottom:40px; }
+      .btn { background:#fff; color:#000; font-weight:700; padding:14px 30px; border-radius:14px; border:none; cursor:pointer; }
+      .row { display:flex; justify-content:space-between; align-items:center; padding:18px 0; border-bottom:1px solid #111; }
+      .info { display:flex; flex-direction:column; }
+      .phone { font-size:16px; font-weight:600; }
+      .address { font-size:13px; color:#777; }
+      select { background:#111; border:none; color:#fff; padding:6px 10px; border-radius:8px; }
+      .recordings { margin-top:60px; }
+      audio { width:100%; margin-top:10px; }
     </style>
   </head>
+
   <body>
+    <div class="wrap">
 
-    <h2>CALLER</h2>
-    <button onclick="start()">START CALLING</button>
+      <div class="logo">
+        <img src="/logo.png"/>
+      </div>
 
-    <div id="list"></div>
+      <div class="cta">
+        <button class="btn" onclick="start()">START CALLING</button>
+      </div>
 
-    <h3>RECORDINGS</h3>
-    <div id="recs"></div>
+      <div id="list"></div>
+
+      <div class="recordings">
+        <h3>CALL RECORDINGS</h3>
+        <div id="recs"></div>
+      </div>
+
+    </div>
 
     <script>
       async function start(){
         await fetch("/start-calls");
-        alert("Started");
+        alert("Calling started");
       }
 
       async function updateStatus(id, status){
@@ -73,14 +95,18 @@ app.get("/dashboard", (req, res) => {
           const row = document.createElement("div");
           row.className = "row";
 
-          row.innerHTML = '<div>' + l.phone + ' | ' + l.address + '</div>' +
-          '<select onchange="updateStatus(' + l.id + ', this.value)">' +
-            '<option value="new">New</option>' +
-            '<option value="called">Called</option>' +
-            '<option value="interested">Interested</option>' +
-            '<option value="appointment">Appointment</option>' +
-            '<option value="closed">Closed</option>' +
-          '</select>';
+          row.innerHTML =
+            '<div class="info">' +
+              '<div class="phone">' + l.phone + '</div>' +
+              '<div class="address">' + l.address + '</div>' +
+            '</div>' +
+            '<select onchange="updateStatus(' + l.id + ', this.value)">' +
+              '<option value="new">New</option>' +
+              '<option value="called">Called</option>' +
+              '<option value="interested">Interested</option>' +
+              '<option value="appointment">Appointment</option>' +
+              '<option value="closed">Closed</option>' +
+            '</select>';
 
           list.appendChild(row);
         });
@@ -104,9 +130,9 @@ app.get("/dashboard", (req, res) => {
   `);
 });
 
-/* =========================
-   LEADS + STATUS
-========================= */
+// =========================
+// LEADS + STATUS
+// =========================
 app.get("/leads", (req, res) => res.json(leads));
 
 app.post("/update-status", (req, res) => {
@@ -116,9 +142,9 @@ app.post("/update-status", (req, res) => {
   res.json({ success: true });
 });
 
-/* =========================
-   RECORDINGS
-========================= */
+// =========================
+// RECORDINGS
+// =========================
 app.get("/recordings", (req, res) => res.json(recordings));
 
 app.post("/recording", (req, res) => {
@@ -131,13 +157,11 @@ app.post("/recording", (req, res) => {
   res.sendStatus(200);
 });
 
-/* =========================
-   ELEVENLABS (FINAL FIX)
-========================= */
+// =========================
+// ELEVENLABS (SAFE)
+// =========================
 app.post("/tts", async (req, res) => {
   try {
-    console.log("TTS:", req.body.text);
-
     const response = await fetch(
       "https://api.elevenlabs.io/v1/text-to-speech/3sfGn775ryaDXhFWHwBg",
       {
@@ -157,33 +181,25 @@ app.post("/tts", async (req, res) => {
       }
     );
 
-    if (!response.ok) {
-      const err = await response.text();
-      console.log("ELEVEN ERROR:", err);
-      throw new Error("TTS failed");
-    }
+    if (!response.ok) throw new Error("blocked");
 
     const audio = await response.arrayBuffer();
 
     const fileName = "speech_" + Date.now() + ".mp3";
     fs.writeFileSync(path.join(__dirname, fileName), Buffer.from(audio));
 
-    const url = BASE_URL + "/" + fileName;
-    console.log("AUDIO URL:", url);
+    res.json({ url: BASE_URL + "/" + fileName });
 
-    res.json({ url });
-
-  } catch (err) {
-    console.log("TTS FAIL:", err.message);
+  } catch {
+    // fallback trigger
     res.json({ url: null });
   }
 });
 
-/* =========================
-   CALL FLOW
-========================= */
+// =========================
+// CALL FLOW
+// =========================
 app.get("/start-calls", async (req, res) => {
-  console.log("START CALLS");
   queue = [...leads];
   processQueue();
   res.send("STARTED");
@@ -193,7 +209,6 @@ async function processQueue() {
   if (!queue.length) return;
 
   const lead = queue.shift();
-  console.log("CALLING:", lead.phone);
 
   await fetch(BASE_URL + "/call?to=" + lead.phone + "&address=" + encodeURIComponent(lead.address));
 
@@ -201,8 +216,6 @@ async function processQueue() {
 }
 
 app.get("/call", async (req, res) => {
-  console.log("CALL ROUTE");
-
   const params = new URLSearchParams({
     To: req.query.to,
     From: process.env.TWILIO_NUMBER,
@@ -211,7 +224,7 @@ app.get("/call", async (req, res) => {
     RecordingStatusCallback: BASE_URL + "/recording"
   });
 
-  const response = await fetch(
+  await fetch(
     "https://api.twilio.com/2010-04-01/Accounts/" + process.env.TWILIO_SID + "/Calls.json",
     {
       method: "POST",
@@ -224,12 +237,12 @@ app.get("/call", async (req, res) => {
     }
   );
 
-  res.send(await response.text());
+  res.send("OK");
 });
 
-/* =========================
-   AI VOICE
-========================= */
+// =========================
+// AI VOICE
+// =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
   const input = req.body.SpeechResult;
@@ -276,16 +289,13 @@ app.all("/twilio-voice", async (req, res) => {
     });
 
     audioUrl = (await tts.json()).url;
-
   } catch {}
-
-  console.log("FINAL AUDIO:", audioUrl);
 
   res.type("text/xml").send(`
 <Response>
   <Gather input="speech" speechTimeout="auto" method="POST"
     action="/twilio-voice?address=${encodeURIComponent(address)}">
-    <Play>${audioUrl}</Play>
+    ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>${reply}</Say>`}
   </Gather>
 </Response>
 `);
