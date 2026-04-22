@@ -33,7 +33,7 @@ console.log("AUTH:", process.env.TWILIO_AUTH ? "exists" : "missing");
   const params = new URLSearchParams({
     To: to,
     From: from,
-    Url: "ai-caller-production-88df.up.railway.app"
+    Url: "https://ai-caller-production-88df.up.railway.app/twilio-voice"
   });
 
   const response = await fetch(url, {
