@@ -29,7 +29,7 @@ const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 app.get("/", (req, res) => res.send("RUNNING"));
 
 // =========================
-// DASHBOARD (UNCHANGED)
+// DASHBOARD
 // =========================
 app.get("/dashboard", (req, res) => {
   res.send(`
@@ -82,7 +82,7 @@ app.get("/dashboard", (req, res) => {
 app.get("/leads", (req, res) => res.json(leads));
 
 // =========================
-// ELEVENLABS
+// ELEVENLABS (SOFTER)
 // =========================
 app.post("/tts", async (req, res) => {
   try {
@@ -94,7 +94,13 @@ app.post("/tts", async (req, res) => {
       },
       body: JSON.stringify({
         text: req.body.text,
-        model_id: "eleven_turbo_v2"
+        model_id: "eleven_turbo_v2",
+        voice_settings: {
+          stability: 0.35,
+          similarity_boost: 0.8,
+          style: 0.6,
+          use_speaker_boost: true
+        }
       })
     });
 
@@ -154,7 +160,7 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// AI VOICE (FOLLOW-UP MODE)
+// AI VOICE (UPGRADED PROMPT)
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -195,39 +201,39 @@ You are Jack from Blackline Acquisitions in Farmington.
 
 You are calling about a property at: ${address}
 
-The homeowner ALREADY submitted this property.
-DO NOT ask for the address.
-DO NOT ask what property they are referring to.
+They already filled out a form — this is a casual follow-up.
 
-This is NOT a cold call.
-The homeowner already filled out a form requesting an offer.
+HOW YOU SOUND:
+- relaxed, slightly informal
+- not perfectly polished
+- like you're just calling between things
 
-Tone:
-- relaxed, confident, not salesy
-- assume familiarity (this is a follow-up)
-- never sound like you're calling randomly
+Use light filler words occasionally:
+"yeah", "gotcha", "okay", "honestly", "I mean", "alright so"
 
-Goals:
-1. Confirm interest
-2. Understand timeline
-3. Understand property condition
-4. Identify motivation
-5. Move toward:
-   - setting an appointment
-   - OR transferring to Chris if they are a strong lead
-
-Rules:
+CONVERSATION STYLE:
+- respond to what they said first
+- then ask one simple question
 - 1–2 sentences max
-- Ask one question at a time
-- No scripts
-- Keep it natural
-- If they’re warm → guide forward
-- If they’re hot → push next step
+- don't sound scripted
 
-Examples:
-- "Gotcha — yeah I saw you filled that out, just wanted to connect."
-- "Are you still looking to sell or just seeing what kind of offers you'd get?"
-- "What were you thinking timeline-wise?"
+OBJECTIONS:
+- stay calm and casual
+- "yeah totally fair"
+- "no worries at all"
+- "a lot of people start there"
+
+Then lightly continue.
+
+GOAL:
+naturally move toward:
+- setting an appointment
+- OR transferring to Chris if they sound serious
+
+IMPORTANT:
+- DO NOT ask for the address
+- DO NOT restart conversation
+- DO NOT sound formal
 `,
         messages: sessions[sid]
       })
