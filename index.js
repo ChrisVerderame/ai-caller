@@ -12,8 +12,8 @@ const recordings = [];
 
 // 🧠 LEADS
 let leads = [
-  { phone: "+12038334544", address: "123 Main St", status: "new" },
-  { phone: "+18605551234", address: "22 Main St", status: "new" }
+  { id: 1, phone: "+12038334544", address: "123 Main St", status: "new" },
+  { id: 2, phone: "+18605551234", address: "22 Main St", status: "new" }
 ];
 
 let queue = [];
@@ -21,13 +21,19 @@ let queue = [];
 // 👉 ROOT
 app.get("/", (req, res) => res.send("RUNNING"));
 
-// 🔥 LEADS
+// 🔥 LEADS API
 app.get("/leads", (req, res) => res.json(leads));
 
-// 🔥 RECORDINGS API
-app.get("/recordings", (req, res) => {
-  res.json(recordings);
+// 🔥 UPDATE STATUS
+app.post("/update-status", (req, res) => {
+  const { id, status } = req.body;
+  const lead = leads.find(l => l.id == id);
+  if (lead) lead.status = status;
+  res.json({ success: true });
 });
+
+// 🔥 RECORDINGS
+app.get("/recordings", (req, res) => res.json(recordings));
 
 // 🔥 START CALLS
 app.get("/start-calls", async (req, res) => {
@@ -51,28 +57,21 @@ async function processQueue() {
 // 🔥 CALL
 app.get("/call", async (req, res) => {
   try {
-    const accountSid = process.env.TWILIO_SID;
-    const authToken = process.env.TWILIO_AUTH;
-    const from = process.env.TWILIO_NUMBER;
-
-    const to = req.query.to;
-    const address = req.query.address || "PROPERTY";
-
     const params = new URLSearchParams({
-      To: to,
-      From: from,
-      Url: `https://ai-caller-production-88df.up.railway.app/twilio-voice?address=${encodeURIComponent(address)}`,
+      To: req.query.to,
+      From: process.env.TWILIO_NUMBER,
+      Url: `https://ai-caller-production-88df.up.railway.app/twilio-voice?address=${encodeURIComponent(req.query.address)}`,
       Record: "true",
       RecordingStatusCallback: `https://ai-caller-production-88df.up.railway.app/recording`
     });
 
     const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`,
+      `https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_SID}/Calls.json`,
       {
         method: "POST",
         headers: {
           Authorization:
-            "Basic " + Buffer.from(accountSid + ":" + authToken).toString("base64"),
+            "Basic " + Buffer.from(process.env.TWILIO_SID + ":" + process.env.TWILIO_AUTH).toString("base64"),
           "Content-Type": "application/x-www-form-urlencoded"
         },
         body: params
@@ -88,23 +87,20 @@ app.get("/call", async (req, res) => {
 
 // 🔥 RECORDING CALLBACK
 app.post("/recording", (req, res) => {
-  const url = req.body.RecordingUrl;
-
-  if (url) {
+  if (req.body.RecordingUrl) {
     recordings.unshift({
-      url: url + ".mp3",
+      url: req.body.RecordingUrl + ".mp3",
       time: new Date().toLocaleString()
     });
   }
-
   res.sendStatus(200);
 });
 
-// 🔥 AI VOICE
+// 🔥 AI VOICE (unchanged)
 app.all("/twilio-voice", async (req, res) => {
   const input = req.body.SpeechResult;
-  const address = req.query.address || "PROPERTY";
   const sid = req.body.CallSid;
+  const address = req.query.address || "PROPERTY";
 
   if (!sessions[sid]) sessions[sid] = [];
 
@@ -112,7 +108,7 @@ app.all("/twilio-voice", async (req, res) => {
     return res.send(`
       <Response>
         <Gather input="speech" action="/twilio-voice?address=${encodeURIComponent(address)}">
-          <Say>CAN YOU REPEAT THAT?</Say>
+          <Say>Can you repeat that?</Say>
         </Gather>
       </Response>
     `);
@@ -120,7 +116,7 @@ app.all("/twilio-voice", async (req, res) => {
 
   sessions[sid].push({ role: "user", content: input });
 
-  let reply = "OKAY.";
+  let reply = "Got it.";
 
   try {
     const ai = await fetch("https://api.anthropic.com/v1/messages", {
@@ -133,7 +129,7 @@ app.all("/twilio-voice", async (req, res) => {
       body: JSON.stringify({
         model: "claude-sonnet-4-5",
         max_tokens: 100,
-        system: "YOU ARE A CASUAL REAL ESTATE CALLER. SHORT HUMAN RESPONSES.",
+        system: "You are a casual real estate caller.",
         messages: sessions[sid]
       })
     });
@@ -154,23 +150,25 @@ app.all("/twilio-voice", async (req, res) => {
   `);
 });
 
-// 🔥 DASHBOARD
+// 🔥 DASHBOARD (CLEAN + FLUID)
 app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
   <head>
     <title>CRM</title>
 
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
     <style>
       body {
         margin:0;
         background:#000;
         color:#fff;
-        font-family:-apple-system;
+        font-family: 'Inter', sans-serif;
       }
 
       .nav {
-        height:120px;
+        height:100px;
         display:flex;
         align-items:center;
         justify-content:space-between;
@@ -179,15 +177,15 @@ app.get("/dashboard", (req, res) => {
       }
 
       .logo img {
-        height:90px;
+        height:80px;
       }
 
       .btn {
         background:#fff;
         color:#000;
-        font-weight:800;
-        padding:14px 22px;
-        border-radius:16px;
+        font-weight:600;
+        padding:12px 20px;
+        border-radius:12px;
         border:none;
         cursor:pointer;
       }
@@ -196,64 +194,56 @@ app.get("/dashboard", (req, res) => {
         padding:30px;
       }
 
-      h3 {
-        font-size:18px;
-        color:#888;
-        text-transform:uppercase;
-      }
-
-      .pipeline {
-        display:flex;
+      .grid {
+        display:grid;
+        grid-template-columns: repeat(3, 1fr);
         gap:20px;
-        margin-bottom:40px;
-      }
-
-      .col {
-        min-width:260px;
-        background:#111;
-        border-radius:16px;
-        padding:15px;
       }
 
       .card {
-        background:#1a1a1a;
-        padding:14px;
+        background:#111;
         border-radius:14px;
-        margin-bottom:12px;
+        padding:16px;
       }
 
       .phone {
-        font-size:18px;
-        font-weight:800;
-        text-transform:uppercase;
+        font-size:16px;
+        font-weight:600;
+        margin-bottom:4px;
       }
 
       .address {
-        font-size:14px;
+        font-size:13px;
         color:#aaa;
         margin-bottom:10px;
-        text-transform:uppercase;
+      }
+
+      select {
+        width:100%;
+        padding:6px;
+        border-radius:8px;
+        border:none;
+        background:#222;
+        color:white;
+        margin-bottom:10px;
       }
 
       .call {
-        background:#fff;
-        color:#000;
-        font-weight:800;
+        background:white;
+        color:black;
+        font-weight:600;
         padding:6px 10px;
         border-radius:8px;
         border:none;
+        cursor:pointer;
       }
 
       .recordings {
+        margin-top:40px;
         background:#111;
         padding:20px;
-        border-radius:16px;
+        border-radius:14px;
       }
-
-      .rec {
-        margin-bottom:10px;
-      }
-
     </style>
   </head>
 
@@ -263,20 +253,15 @@ app.get("/dashboard", (req, res) => {
       <div class="logo">
         <img src="/logo.png"/>
       </div>
-
-      <button class="btn" onclick="start()">START CALLING</button>
+      <button class="btn" onclick="start()">Start Calling</button>
     </div>
 
     <div class="main">
 
-      <div class="pipeline" id="pipeline">
-        <div class="col"><h3>NEW</h3></div>
-        <div class="col"><h3>CALLED</h3></div>
-        <div class="col"><h3>INTERESTED</h3></div>
-      </div>
+      <div class="grid" id="grid"></div>
 
       <div class="recordings">
-        <h3>CALL RECORDINGS</h3>
+        <h3>Recordings</h3>
         <div id="recs"></div>
       </div>
 
@@ -285,34 +270,48 @@ app.get("/dashboard", (req, res) => {
     <script>
       async function load() {
         const leads = await (await fetch("/leads")).json();
-        const cols = document.querySelectorAll(".col");
+        const grid = document.getElementById("grid");
 
         leads.forEach(l => {
-          const card = document.createElement("div");
-          card.className = "card";
+          const div = document.createElement("div");
+          div.className = "card";
 
-          card.innerHTML = \`
+          div.innerHTML = \`
             <div class="phone">\${l.phone}</div>
             <div class="address">\${l.address}</div>
-            <button class="call" onclick="callLead('\${l.phone}','\${l.address}')">CALL</button>
+
+            <select onchange="updateStatus(\${l.id}, this.value)">
+              <option value="new" \${l.status==='new'?'selected':''}>New</option>
+              <option value="called" \${l.status==='called'?'selected':''}>Called</option>
+              <option value="interested" \${l.status==='interested'?'selected':''}>Interested</option>
+              <option value="appointment" \${l.status==='appointment'?'selected':''}>Appointment</option>
+              <option value="closed" \${l.status==='closed'?'selected':''}>Closed</option>
+            </select>
+
+            <button class="call" onclick="callLead('\${l.phone}','\${l.address}')">Call</button>
           \`;
 
-          cols[0].appendChild(card);
+          grid.appendChild(div);
         });
 
         const recs = await (await fetch("/recordings")).json();
         const recDiv = document.getElementById("recs");
 
         recs.forEach(r => {
-          const div = document.createElement("div");
-          div.className = "rec";
-
-          div.innerHTML = \`
+          const el = document.createElement("div");
+          el.innerHTML = \`
             <div>\${r.time}</div>
             <audio controls src="\${r.url}"></audio>
           \`;
+          recDiv.appendChild(el);
+        });
+      }
 
-          recDiv.appendChild(div);
+      async function updateStatus(id, status) {
+        await fetch("/update-status", {
+          method:"POST",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify({ id, status })
         });
       }
 
