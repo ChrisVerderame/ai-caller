@@ -27,7 +27,7 @@ const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 app.get("/", (req, res) => res.send("RUNNING"));
 
 /* =========================
-   DASHBOARD (FULL UI)
+   DASHBOARD
 ========================= */
 app.get("/dashboard", (req, res) => {
   res.send(`
@@ -35,82 +35,19 @@ app.get("/dashboard", (req, res) => {
   <head>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
-      body {
-        margin:0;
-        background:#000;
-        color:#fff;
-        font-family:'Inter', sans-serif;
-      }
-
-      .wrap {
-        max-width:900px;
-        margin:auto;
-        padding:40px 20px;
-      }
-
-      .logo {
-        text-align:center;
-        margin-bottom:40px;
-      }
-
-      .logo img {
-        height:220px;
-      }
-
-      .cta {
-        text-align:center;
-        margin-bottom:40px;
-      }
-
-      .btn {
-        background:#fff;
-        color:#000;
-        font-weight:700;
-        padding:14px 30px;
-        border-radius:14px;
-        border:none;
-        cursor:pointer;
-      }
-
-      .row {
-        display:flex;
-        justify-content:space-between;
-        align-items:center;
-        padding:18px 0;
-        border-bottom:1px solid #111;
-      }
-
-      .info {
-        display:flex;
-        flex-direction:column;
-      }
-
-      .phone {
-        font-size:16px;
-        font-weight:600;
-      }
-
-      .address {
-        font-size:13px;
-        color:#777;
-      }
-
-      select {
-        background:#111;
-        border:none;
-        color:#fff;
-        padding:6px 10px;
-        border-radius:8px;
-      }
-
-      .recordings {
-        margin-top:60px;
-      }
-
-      audio {
-        width:100%;
-        margin-top:10px;
-      }
+      body { margin:0; background:#000; color:#fff; font-family:'Inter', sans-serif; }
+      .wrap { max-width:900px; margin:auto; padding:40px 20px; }
+      .logo { text-align:center; margin-bottom:40px; }
+      .logo img { height:220px; }
+      .cta { text-align:center; margin-bottom:40px; }
+      .btn { background:#fff; color:#000; font-weight:700; padding:14px 30px; border-radius:14px; border:none; cursor:pointer; }
+      .row { display:flex; justify-content:space-between; align-items:center; padding:18px 0; border-bottom:1px solid #111; }
+      .info { display:flex; flex-direction:column; }
+      .phone { font-size:16px; font-weight:600; }
+      .address { font-size:13px; color:#777; }
+      select { background:#111; border:none; color:#fff; padding:6px 10px; border-radius:8px; }
+      .recordings { margin-top:60px; }
+      audio { width:100%; margin-top:10px; }
     </style>
   </head>
 
@@ -136,7 +73,6 @@ app.get("/dashboard", (req, res) => {
 
     <script>
       async function start(){
-        console.log("Starting calls...");
         await fetch("/start-calls");
         alert("Calling started");
       }
@@ -152,42 +88,40 @@ app.get("/dashboard", (req, res) => {
       async function load(){
         const leads = await (await fetch("/leads")).json();
         const list = document.getElementById("list");
-
         list.innerHTML = "";
 
         leads.forEach(l=>{
           const row = document.createElement("div");
           row.className = "row";
 
-          row.innerHTML = \`
+          row.innerHTML = `
             <div class="info">
-              <div class="phone">\${l.phone}</div>
-              <div class="address">\${l.address}</div>
+              <div class="phone">${l.phone}</div>
+              <div class="address">${l.address}</div>
             </div>
 
-            <select onchange="updateStatus(\${l.id}, this.value)">
+            <select onchange="updateStatus(${l.id}, this.value)">
               <option value="new">New</option>
               <option value="called">Called</option>
               <option value="interested">Interested</option>
               <option value="appointment">Appointment</option>
               <option value="closed">Closed</option>
             </select>
-          \`;
+          `;
 
           list.appendChild(row);
         });
 
         const recs = await (await fetch("/recordings")).json();
         const recDiv = document.getElementById("recs");
-
         recDiv.innerHTML = "";
 
         recs.forEach(r=>{
           const el = document.createElement("div");
-          el.innerHTML = \`
-            <div>\${r.time}</div>
-            <audio controls src="\${r.url}"></audio>
-          \`;
+          el.innerHTML = `
+            <div>${r.time}</div>
+            <audio controls src="${r.url}"></audio>
+          `;
           recDiv.appendChild(el);
         });
       }
@@ -227,7 +161,7 @@ app.post("/recording", (req, res) => {
 });
 
 /* =========================
-   ELEVENLABS (FIXED)
+   ELEVENLABS (FINAL FIX)
 ========================= */
 app.post("/tts", async (req, res) => {
   try {
@@ -243,20 +177,25 @@ app.post("/tts", async (req, res) => {
         },
         body: JSON.stringify({
           text: req.body.text,
-          model_id: "eleven_turbo_v2"
+          model_id: "eleven_turbo_v2",
+          voice_settings: {
+            stability: 0.4,
+            similarity_boost: 0.8
+          }
         })
       }
     );
 
-    const buffer = await response.arrayBuffer();
-
-    if (response.status !== 200) {
-      console.log("ELEVEN ERROR:", Buffer.from(buffer).toString());
+    if (!response.ok) {
+      const errText = await response.text();
+      console.log("ELEVEN ERROR:", errText);
       throw new Error("TTS failed");
     }
 
+    const audio = await response.arrayBuffer();
+
     const fileName = "speech_" + Date.now() + ".mp3";
-    fs.writeFileSync(path.join(__dirname, fileName), Buffer.from(buffer));
+    fs.writeFileSync(path.join(__dirname, fileName), Buffer.from(audio));
 
     const publicUrl = BASE_URL + "/" + fileName;
     console.log("AUDIO URL:", publicUrl);
