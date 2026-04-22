@@ -22,22 +22,10 @@ let queue = [];
 // ✅ YOUR DOMAIN
 const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 
-// ROOT
+/* =========================
+   ROOT
+========================= */
 app.get("/", (req, res) => res.send("RUNNING"));
-
-// LEADS
-app.get("/leads", (req, res) => res.json(leads));
-
-// UPDATE STATUS
-app.post("/update-status", (req, res) => {
-  const { id, status } = req.body;
-  const lead = leads.find(l => l.id == id);
-  if (lead) lead.status = status;
-  res.json({ success: true });
-});
-
-// RECORDINGS
-app.get("/recordings", (req, res) => res.json(recordings));
 
 /* =========================
    DASHBOARD
@@ -46,89 +34,38 @@ app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
   <head>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
       body { margin:0; background:#000; color:#fff; font-family:'Inter', sans-serif; }
-      .wrap { max-width:700px; margin:0 auto; padding:50px 20px; }
-      .logo { text-align:center; margin-bottom:30px; }
+      .wrap { max-width:700px; margin:auto; padding:50px 20px; }
+      .logo { text-align:center; margin-bottom:40px; }
       .logo img { height:200px; }
-      .cta { text-align:center; margin-bottom:40px; }
-      .btn { background:#fff; color:#000; font-weight:600; padding:14px 28px; border-radius:14px; border:none; cursor:pointer; }
-      .row { display:flex; justify-content:space-between; align-items:center; padding:16px 0; border-bottom:1px solid #111; }
-      .info { display:flex; flex-direction:column; }
-      .phone { font-weight:600; }
-      .address { font-size:13px; color:#777; }
-      select { background:#111; border:none; color:#fff; padding:6px 10px; border-radius:8px; }
-      .recordings { margin-top:50px; }
-      audio { width:100%; margin-top:10px; }
+      .btn { display:block; margin:auto; padding:14px 28px; background:#fff; color:#000; border:none; border-radius:12px; font-weight:600; cursor:pointer; }
+      .row { display:flex; justify-content:space-between; padding:15px 0; border-bottom:1px solid #111; }
     </style>
   </head>
   <body>
     <div class="wrap">
       <div class="logo"><img src="/logo.png"/></div>
-      <div class="cta">
-        <button class="btn" onclick="start()">Start Calling</button>
-      </div>
+      <button class="btn" onclick="start()">Start Calling</button>
       <div id="list"></div>
-      <div class="recordings">
-        <h3>Call Recordings</h3>
-        <div id="recs"></div>
-      </div>
     </div>
 
     <script>
       async function start(){
-        console.log("Starting calls...");
-        const res = await fetch("/start-calls");
-        const text = await res.text();
-        console.log(text);
+        await fetch("/start-calls");
         alert("Calling started");
       }
 
-      async function load() {
+      async function load(){
         const leads = await (await fetch("/leads")).json();
         const list = document.getElementById("list");
 
-        leads.forEach(l => {
-          const row = document.createElement("div");
-          row.className = "row";
-
-          row.innerHTML = \`
-            <div class="info">
-              <div class="phone">\${l.phone}</div>
-              <div class="address">\${l.address}</div>
-            </div>
-
-            <select onchange="updateStatus(\${l.id}, this.value)">
-              <option value="new">New</option>
-              <option value="called">Called</option>
-              <option value="interested">Interested</option>
-              <option value="appointment">Appointment</option>
-              <option value="closed">Closed</option>
-            </select>
-          \`;
-
-          list.appendChild(row);
-        });
-
-        const recs = await (await fetch("/recordings")).json();
-        const recDiv = document.getElementById("recs");
-
-        recs.forEach(r => {
-          const el = document.createElement("div");
-          el.innerHTML = \`
-            <div>\${r.time}</div>
-            <audio controls src="\${r.url}"></audio>
-          \`;
-          recDiv.appendChild(el);
-        });
-      }
-
-      async function updateStatus(id, status) {
-        await fetch("/update-status", {
-          method:"POST",
-          headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ id, status })
+        leads.forEach(l=>{
+          const div = document.createElement("div");
+          div.className = "row";
+          div.innerHTML = "<div>"+l.phone+"</div><div>"+l.address+"</div>";
+          list.appendChild(div);
         });
       }
 
@@ -140,11 +77,16 @@ app.get("/dashboard", (req, res) => {
 });
 
 /* =========================
-   ELEVENLABS TTS (DEBUG)
+   LEADS / STATUS
+========================= */
+app.get("/leads", (req, res) => res.json(leads));
+
+/* =========================
+   ELEVENLABS (FORCED)
 ========================= */
 app.post("/tts", async (req, res) => {
   try {
-    console.log("TTS REQUEST:", req.body.text);
+    console.log("TTS TEXT:", req.body.text);
 
     const response = await fetch(
       "https://api.elevenlabs.io/v1/text-to-speech/3sfGn775ryaDXhFWHwBg",
@@ -161,25 +103,25 @@ app.post("/tts", async (req, res) => {
       }
     );
 
-    console.log("ElevenLabs status:", response.status);
+    const buffer = await response.arrayBuffer();
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.log("ElevenLabs error:", errText);
+    if (response.status !== 200) {
+      console.log("ELEVEN ERROR:", Buffer.from(buffer).toString());
       throw new Error("TTS failed");
     }
 
-    const audio = await response.arrayBuffer();
     const fileName = "speech_" + Date.now() + ".mp3";
+    const filePath = path.join(__dirname, fileName);
 
-    fs.writeFileSync(path.join(__dirname, fileName), Buffer.from(audio));
+    fs.writeFileSync(filePath, Buffer.from(buffer));
 
-    console.log("TTS SUCCESS:", fileName);
+    const publicUrl = BASE_URL + "/" + fileName;
+    console.log("AUDIO URL:", publicUrl);
 
-    res.json({ url: BASE_URL + "/" + fileName });
+    res.json({ url: publicUrl });
 
   } catch (err) {
-    console.error("TTS ERROR:", err.message);
+    console.log("TTS FAIL:", err.message);
     res.json({ url: null });
   }
 });
@@ -188,17 +130,14 @@ app.post("/tts", async (req, res) => {
    CALL FLOW
 ========================= */
 app.get("/start-calls", async (req, res) => {
-  console.log("START CALLS TRIGGERED");
+  console.log("START CALLS");
   queue = [...leads];
   processQueue();
   res.send("STARTED");
 });
 
 async function processQueue() {
-  if (!queue.length) {
-    console.log("QUEUE EMPTY");
-    return;
-  }
+  if (!queue.length) return;
 
   const lead = queue.shift();
   console.log("CALLING:", lead.phone);
@@ -209,14 +148,12 @@ async function processQueue() {
 }
 
 app.get("/call", async (req, res) => {
-  console.log("CALL ROUTE HIT:", req.query.to);
+  console.log("CALL ROUTE");
 
   const params = new URLSearchParams({
     To: req.query.to,
     From: process.env.TWILIO_NUMBER,
-    Url: BASE_URL + "/twilio-voice?address=" + encodeURIComponent(req.query.address),
-    Record: "true",
-    RecordingStatusCallback: BASE_URL + "/recording"
+    Url: BASE_URL + "/twilio-voice?address=" + encodeURIComponent(req.query.address)
   });
 
   const response = await fetch(
@@ -235,23 +172,13 @@ app.get("/call", async (req, res) => {
   res.send(await response.text());
 });
 
-app.post("/recording", (req, res) => {
-  if (req.body.RecordingUrl) {
-    recordings.unshift({
-      url: req.body.RecordingUrl + ".mp3",
-      time: new Date().toLocaleString()
-    });
-  }
-  res.sendStatus(200);
-});
-
 /* =========================
    AI VOICE
 ========================= */
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
   const input = req.body.SpeechResult;
-  const address = req.query.address || "PROPERTY";
+  const address = req.query.address;
 
   if (!sessions[sid]) sessions[sid] = [];
 
@@ -264,29 +191,22 @@ app.all("/twilio-voice", async (req, res) => {
   } else {
     sessions[sid].push({ role: "user", content: input });
 
-    try {
-      const ai = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": process.env.ANTHROPIC_KEY,
-          "content-type": "application/json",
-          "anthropic-version": "2023-06-01"
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-5",
-          max_tokens: 60,
-          temperature: 0.7,
-          system: "Real estate caller. Short, natural, push toward setting a call.",
-          messages: sessions[sid]
-        })
-      });
+    const ai = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": process.env.ANTHROPIC_KEY,
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5",
+        max_tokens: 60,
+        messages: sessions[sid]
+      })
+    });
 
-      const data = await ai.json();
-      reply = data.content?.[0]?.text || "Got it.";
-
-    } catch {
-      reply = "Got it.";
-    }
+    const data = await ai.json();
+    reply = data.content?.[0]?.text || "Got it.";
 
     sessions[sid].push({ role: "assistant", content: reply });
   }
@@ -300,14 +220,19 @@ app.all("/twilio-voice", async (req, res) => {
       body: JSON.stringify({ text: reply })
     });
 
-    audioUrl = (await tts.json()).url;
+    const result = await tts.json();
+    audioUrl = result.url;
+
   } catch {}
 
+  console.log("FINAL AUDIO:", audioUrl);
+
+  // 🚨 FORCE PLAY (NO FALLBACK)
   res.type("text/xml").send(`
 <Response>
   <Gather input="speech" speechTimeout="auto" method="POST"
     action="/twilio-voice?address=${encodeURIComponent(address)}">
-    ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>${reply}</Say>`}
+    <Play>${audioUrl}</Play>
   </Gather>
 </Response>
 `);
