@@ -192,8 +192,7 @@ Rules:
 
 Booking:
 - let them choose any day/time
-- ask "what works best for you?"
-- do NOT offer specific slots
+- ask "what works best for you?" if they haven't given one
 
 If they give a time:
 say "perfect — we’ll follow up with you a few hours prior via text just to confirm"
@@ -216,8 +215,8 @@ say "let me grab Chris real quick"
 
     reply = text.trim() || "yeah gotcha — what’s got you looking into it?";
 
-    // detect if they gave a time
     const lower = (input || "").toLowerCase();
+
     const gaveTime =
       lower.includes("am") ||
       lower.includes("pm") ||
@@ -226,11 +225,22 @@ say "let me grab Chris real quick"
       lower.includes("tonight") ||
       lower.match(/\d{1,2}/);
 
+    const wantsToTalk =
+      lower.includes("yes") ||
+      lower.includes("yeah") ||
+      lower.includes("interested") ||
+      lower.includes("maybe") ||
+      lower.includes("sounds good") ||
+      lower.includes("okay") ||
+      lower.includes("sure");
+
+    // 🔥 ORDER MATTERS
     if (gaveTime) {
       reply = "perfect — we’ll follow up with you a few hours prior via text just to confirm";
+    } else if (wantsToTalk) {
+      reply = "gotcha — what works best for you, timing-wise?";
     }
 
-    // block address question
     if (reply.toLowerCase().includes("address")) {
       reply = "yeah gotcha — what’s got you looking into it?";
     }
@@ -238,9 +248,6 @@ say "let me grab Chris real quick"
     sessions[sid].push({ role: "assistant", content: reply });
   }
 
-  // =========================
-  // TRANSFER
-  // =========================
   if (reply.toLowerCase().includes("grab chris")) {
     let audioUrl = null;
 
