@@ -140,10 +140,12 @@ app.get("/dashboard", (req, res) => {
 });
 
 /* =========================
-   ELEVENLABS (SAFE)
+   ELEVENLABS TTS (DEBUG)
 ========================= */
 app.post("/tts", async (req, res) => {
   try {
+    console.log("TTS REQUEST:", req.body.text);
+
     const response = await fetch(
       "https://api.elevenlabs.io/v1/text-to-speech/3sfGn775ryaDXhFWHwBg",
       {
@@ -159,11 +161,20 @@ app.post("/tts", async (req, res) => {
       }
     );
 
-    if (!response.ok) throw new Error("TTS failed");
+    console.log("ElevenLabs status:", response.status);
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.log("ElevenLabs error:", errText);
+      throw new Error("TTS failed");
+    }
 
     const audio = await response.arrayBuffer();
     const fileName = "speech_" + Date.now() + ".mp3";
+
     fs.writeFileSync(path.join(__dirname, fileName), Buffer.from(audio));
+
+    console.log("TTS SUCCESS:", fileName);
 
     res.json({ url: BASE_URL + "/" + fileName });
 
