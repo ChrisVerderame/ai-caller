@@ -166,7 +166,6 @@ app.all("/twilio-voice", async (req, res) => {
 
   let reply;
 
-  // 🔥 FOLLOW-UP INTRO
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
 
@@ -224,7 +223,11 @@ Rules:
 - Keep it natural
 - If they’re warm → guide forward
 - If they’re hot → push next step
-`,
+
+Examples:
+- "Gotcha — yeah I saw you filled that out, just wanted to connect."
+- "Are you still looking to sell or just seeing what kind of offers you'd get?"
+- "What were you thinking timeline-wise?"
 `,
         messages: sessions[sid]
       })
