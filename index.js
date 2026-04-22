@@ -96,22 +96,27 @@ app.post("/recording", (req, res) => {
   res.sendStatus(200);
 });
 
-// AI VOICE
+// 🔥 AI VOICE (FIXED)
 app.all("/twilio-voice", async (req, res) => {
   const input = req.body.SpeechResult;
   const sid = req.body.CallSid;
   const address = req.query.address || "PROPERTY";
 
+  console.log("SpeechResult:", input);
+
   if (!sessions[sid]) sessions[sid] = [];
 
   if (!input) {
-    return res.send(`
-      <Response>
-        <Gather input="speech" action="/twilio-voice?address=${encodeURIComponent(address)}">
-          <Say>Can you repeat that?</Say>
-        </Gather>
-      </Response>
-    `);
+    return res.type("text/xml").send(`
+<Response>
+  <Gather input="speech"
+    speechTimeout="auto"
+    method="POST"
+    action="/twilio-voice?address=${encodeURIComponent(address)}">
+    <Say>Can you repeat that?</Say>
+  </Gather>
+</Response>
+`);
   }
 
   sessions[sid].push({ role: "user", content: input });
@@ -129,35 +134,41 @@ app.all("/twilio-voice", async (req, res) => {
       body: JSON.stringify({
         model: "claude-sonnet-4-5",
         max_tokens: 100,
-        system: "You are a casual real estate caller.",
+        system: "You are a casual real estate caller. Keep responses short and natural.",
         messages: sessions[sid]
       })
     });
 
     const data = await ai.json();
-    if (data.content) reply = data.content[0].text;
+    if (data.content && data.content.length > 0) {
+      reply = data.content[0].text;
+    }
 
-  } catch {}
+  } catch (err) {
+    console.error("AI ERROR:", err);
+  }
 
   sessions[sid].push({ role: "assistant", content: reply });
 
-  res.send(`
-    <Response>
-      <Gather input="speech" action="/twilio-voice?address=${encodeURIComponent(address)}">
-        <Say>${reply}</Say>
-      </Gather>
-    </Response>
-  `);
+  res.type("text/xml").send(`
+<Response>
+  <Gather input="speech"
+    speechTimeout="auto"
+    method="POST"
+    action="/twilio-voice?address=${encodeURIComponent(address)}">
+    <Say>${reply}</Say>
+  </Gather>
+</Response>
+`);
 });
 
-// DASHBOARD
+// 🔥 CLEAN VOXLY-STYLE UI
 app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
   <head>
-    <title>CRM</title>
 
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 
     <style>
       body {
@@ -167,102 +178,92 @@ app.get("/dashboard", (req, res) => {
         font-family:'Inter', sans-serif;
       }
 
+      .wrap {
+        max-width:700px;
+        margin:0 auto;
+        padding:50px 20px;
+      }
+
       .logo {
-        display:flex;
-        justify-content:center;
-        padding:40px 0 10px;
+        text-align:center;
+        margin-bottom:30px;
       }
 
       .logo img {
-        height:160px;
-        filter:drop-shadow(0 0 30px rgba(255,255,255,0.15));
+        height:180px;
       }
 
-      .topbar {
-        display:flex;
-        justify-content:center;
-        margin-bottom:30px;
+      .cta {
+        text-align:center;
+        margin-bottom:40px;
       }
 
       .btn {
         background:#fff;
         color:#000;
         font-weight:600;
-        padding:12px 22px;
-        border-radius:12px;
+        padding:14px 28px;
+        border-radius:14px;
         border:none;
         cursor:pointer;
       }
 
-      .main {
-        padding:20px 30px;
+      .row {
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        padding:16px 0;
+        border-bottom:1px solid #111;
       }
 
-      .grid {
-        display:grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap:20px;
-      }
-
-      .card {
-        background:#111;
-        padding:18px;
-        border-radius:14px;
+      .info {
+        display:flex;
+        flex-direction:column;
       }
 
       .phone {
-        font-size:16px;
         font-weight:600;
       }
 
       .address {
         font-size:13px;
-        color:#aaa;
-        margin-bottom:10px;
+        color:#777;
       }
 
       select {
-        width:100%;
-        padding:8px;
+        background:#111;
+        border:none;
+        color:#fff;
+        padding:6px 10px;
         border-radius:8px;
-        border:none;
-        background:#222;
-        color:white;
-        margin-bottom:10px;
-      }
-
-      .call {
-        background:#fff;
-        color:#000;
-        font-weight:700;
-        padding:8px 12px;
-        border-radius:10px;
-        border:none;
-        cursor:pointer;
       }
 
       .recordings {
-        margin-top:40px;
-        background:#111;
-        padding:20px;
-        border-radius:14px;
+        margin-top:50px;
       }
+
+      audio {
+        width:100%;
+        margin-top:10px;
+      }
+
     </style>
+
   </head>
 
   <body>
 
-    <div class="logo">
-      <img src="/logo.png"/>
-    </div>
+    <div class="wrap">
 
-    <div class="topbar">
-      <button class="btn" onclick="start()">Start Calling</button>
-    </div>
+      <div class="logo">
+        <img src="/logo.png"/>
+      </div>
 
-    <div class="main">
+      <div class="cta">
+        <button class="btn" onclick="start()">Start Calling</button>
+      </div>
 
-      <div class="grid" id="grid"></div>
+      <div id="list"></div>
 
       <div class="recordings">
         <h3>Call Recordings</h3>
@@ -274,28 +275,28 @@ app.get("/dashboard", (req, res) => {
     <script>
       async function load() {
         const leads = await (await fetch("/leads")).json();
-        const grid = document.getElementById("grid");
+        const list = document.getElementById("list");
 
         leads.forEach(l => {
-          const div = document.createElement("div");
-          div.className = "card";
+          const row = document.createElement("div");
+          row.className = "row";
 
-          div.innerHTML = \`
-            <div class="phone">\${l.phone}</div>
-            <div class="address">\${l.address}</div>
+          row.innerHTML = \`
+            <div class="info">
+              <div class="phone">\${l.phone}</div>
+              <div class="address">\${l.address}</div>
+            </div>
 
             <select onchange="updateStatus(\${l.id}, this.value)">
-              <option value="new" \${l.status==='new'?'selected':''}>New</option>
-              <option value="called" \${l.status==='called'?'selected':''}>Called</option>
-              <option value="interested" \${l.status==='interested'?'selected':''}>Interested</option>
-              <option value="appointment" \${l.status==='appointment'?'selected':''}>Appointment</option>
-              <option value="closed" \${l.status==='closed'?'selected':''}>Closed</option>
+              <option value="new">New</option>
+              <option value="called">Called</option>
+              <option value="interested">Interested</option>
+              <option value="appointment">Appointment</option>
+              <option value="closed">Closed</option>
             </select>
-
-            <button class="call" onclick="callLead('\${l.phone}','\${l.address}')">Call</button>
           \`;
 
-          grid.appendChild(div);
+          list.appendChild(row);
         });
 
         const recs = await (await fetch("/recordings")).json();
@@ -317,10 +318,6 @@ app.get("/dashboard", (req, res) => {
           headers:{ "Content-Type":"application/json" },
           body: JSON.stringify({ id, status })
         });
-      }
-
-      async function callLead(p,a){
-        await fetch(\`/call?to=\${p}&address=\${encodeURIComponent(a)}\`);
       }
 
       async function start(){
