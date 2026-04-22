@@ -8,18 +8,17 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// 🧠 MEMORY
+// MEMORY + DATA
 const sessions = {};
 const recordings = [];
 
-// 🧠 LEADS
 let leads = [
   { id: 1, phone: "+12038334544", address: "123 Main St", status: "new" }
 ];
 
 let queue = [];
 
-// ✅ YOUR DOMAIN
+// YOUR DOMAIN
 const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 
 /* =========================
@@ -28,7 +27,7 @@ const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 app.get("/", (req, res) => res.send("RUNNING"));
 
 /* =========================
-   DASHBOARD
+   DASHBOARD (FULL UI)
 ========================= */
 app.get("/dashboard", (req, res) => {
   res.send(`
@@ -36,36 +35,160 @@ app.get("/dashboard", (req, res) => {
   <head>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
-      body { margin:0; background:#000; color:#fff; font-family:'Inter', sans-serif; }
-      .wrap { max-width:700px; margin:auto; padding:50px 20px; }
-      .logo { text-align:center; margin-bottom:40px; }
-      .logo img { height:200px; }
-      .btn { display:block; margin:auto; padding:14px 28px; background:#fff; color:#000; border:none; border-radius:12px; font-weight:600; cursor:pointer; }
-      .row { display:flex; justify-content:space-between; padding:15px 0; border-bottom:1px solid #111; }
+      body {
+        margin:0;
+        background:#000;
+        color:#fff;
+        font-family:'Inter', sans-serif;
+      }
+
+      .wrap {
+        max-width:900px;
+        margin:auto;
+        padding:40px 20px;
+      }
+
+      .logo {
+        text-align:center;
+        margin-bottom:40px;
+      }
+
+      .logo img {
+        height:220px;
+      }
+
+      .cta {
+        text-align:center;
+        margin-bottom:40px;
+      }
+
+      .btn {
+        background:#fff;
+        color:#000;
+        font-weight:700;
+        padding:14px 30px;
+        border-radius:14px;
+        border:none;
+        cursor:pointer;
+      }
+
+      .row {
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        padding:18px 0;
+        border-bottom:1px solid #111;
+      }
+
+      .info {
+        display:flex;
+        flex-direction:column;
+      }
+
+      .phone {
+        font-size:16px;
+        font-weight:600;
+      }
+
+      .address {
+        font-size:13px;
+        color:#777;
+      }
+
+      select {
+        background:#111;
+        border:none;
+        color:#fff;
+        padding:6px 10px;
+        border-radius:8px;
+      }
+
+      .recordings {
+        margin-top:60px;
+      }
+
+      audio {
+        width:100%;
+        margin-top:10px;
+      }
     </style>
   </head>
+
   <body>
     <div class="wrap">
-      <div class="logo"><img src="/logo.png"/></div>
-      <button class="btn" onclick="start()">Start Calling</button>
+
+      <div class="logo">
+        <img src="/logo.png"/>
+      </div>
+
+      <div class="cta">
+        <button class="btn" onclick="start()">START CALLING</button>
+      </div>
+
       <div id="list"></div>
+
+      <div class="recordings">
+        <h3>CALL RECORDINGS</h3>
+        <div id="recs"></div>
+      </div>
+
     </div>
 
     <script>
       async function start(){
+        console.log("Starting calls...");
         await fetch("/start-calls");
         alert("Calling started");
+      }
+
+      async function updateStatus(id, status){
+        await fetch("/update-status", {
+          method:"POST",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify({ id, status })
+        });
       }
 
       async function load(){
         const leads = await (await fetch("/leads")).json();
         const list = document.getElementById("list");
 
+        list.innerHTML = "";
+
         leads.forEach(l=>{
-          const div = document.createElement("div");
-          div.className = "row";
-          div.innerHTML = "<div>"+l.phone+"</div><div>"+l.address+"</div>";
-          list.appendChild(div);
+          const row = document.createElement("div");
+          row.className = "row";
+
+          row.innerHTML = \`
+            <div class="info">
+              <div class="phone">\${l.phone}</div>
+              <div class="address">\${l.address}</div>
+            </div>
+
+            <select onchange="updateStatus(\${l.id}, this.value)">
+              <option value="new">New</option>
+              <option value="called">Called</option>
+              <option value="interested">Interested</option>
+              <option value="appointment">Appointment</option>
+              <option value="closed">Closed</option>
+            </select>
+          \`;
+
+          list.appendChild(row);
+        });
+
+        const recs = await (await fetch("/recordings")).json();
+        const recDiv = document.getElementById("recs");
+
+        recDiv.innerHTML = "";
+
+        recs.forEach(r=>{
+          const el = document.createElement("div");
+          el.innerHTML = \`
+            <div>\${r.time}</div>
+            <audio controls src="\${r.url}"></audio>
+          \`;
+          recDiv.appendChild(el);
         });
       }
 
@@ -77,12 +200,34 @@ app.get("/dashboard", (req, res) => {
 });
 
 /* =========================
-   LEADS / STATUS
+   LEADS + STATUS
 ========================= */
 app.get("/leads", (req, res) => res.json(leads));
 
+app.post("/update-status", (req, res) => {
+  const { id, status } = req.body;
+  const lead = leads.find(l => l.id == id);
+  if (lead) lead.status = status;
+  res.json({ success: true });
+});
+
 /* =========================
-   ELEVENLABS (FORCED)
+   RECORDINGS
+========================= */
+app.get("/recordings", (req, res) => res.json(recordings));
+
+app.post("/recording", (req, res) => {
+  if (req.body.RecordingUrl) {
+    recordings.unshift({
+      url: req.body.RecordingUrl + ".mp3",
+      time: new Date().toLocaleString()
+    });
+  }
+  res.sendStatus(200);
+});
+
+/* =========================
+   ELEVENLABS (FIXED)
 ========================= */
 app.post("/tts", async (req, res) => {
   try {
@@ -98,7 +243,7 @@ app.post("/tts", async (req, res) => {
         },
         body: JSON.stringify({
           text: req.body.text,
-          model_id: "eleven_monolingual_v1"
+          model_id: "eleven_turbo_v2"
         })
       }
     );
@@ -111,9 +256,7 @@ app.post("/tts", async (req, res) => {
     }
 
     const fileName = "speech_" + Date.now() + ".mp3";
-    const filePath = path.join(__dirname, fileName);
-
-    fs.writeFileSync(filePath, Buffer.from(buffer));
+    fs.writeFileSync(path.join(__dirname, fileName), Buffer.from(buffer));
 
     const publicUrl = BASE_URL + "/" + fileName;
     console.log("AUDIO URL:", publicUrl);
@@ -153,7 +296,9 @@ app.get("/call", async (req, res) => {
   const params = new URLSearchParams({
     To: req.query.to,
     From: process.env.TWILIO_NUMBER,
-    Url: BASE_URL + "/twilio-voice?address=" + encodeURIComponent(req.query.address)
+    Url: BASE_URL + "/twilio-voice?address=" + encodeURIComponent(req.query.address),
+    Record: "true",
+    RecordingStatusCallback: BASE_URL + "/recording"
   });
 
   const response = await fetch(
@@ -220,14 +365,12 @@ app.all("/twilio-voice", async (req, res) => {
       body: JSON.stringify({ text: reply })
     });
 
-    const result = await tts.json();
-    audioUrl = result.url;
+    audioUrl = (await tts.json()).url;
 
   } catch {}
 
   console.log("FINAL AUDIO:", audioUrl);
 
-  // 🚨 FORCE PLAY (NO FALLBACK)
   res.type("text/xml").send(`
 <Response>
   <Gather input="speech" speechTimeout="auto" method="POST"
