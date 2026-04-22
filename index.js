@@ -70,8 +70,6 @@ app.post("/tts", async (req, res) => {
       })
     });
 
-    if (!r.ok) throw new Error();
-
     const audio = await r.arrayBuffer();
     const file = "speech_" + Date.now() + ".mp3";
 
@@ -98,15 +96,7 @@ async function processQueue() {
 
   const lead = queue.shift();
 
-  await fetch(
-    BASE_URL +
-      "/call?to=" +
-      lead.phone +
-      "&name=" +
-      encodeURIComponent(lead.name || "") +
-      "&address=" +
-      encodeURIComponent(lead.address)
-  );
+  await fetch(BASE_URL + "/call?to=" + lead.phone + "&name=" + encodeURIComponent(lead.name || "") + "&address=" + encodeURIComponent(lead.address));
 
   setTimeout(processQueue, 15000);
 }
@@ -115,24 +105,15 @@ app.get("/call", async (req, res) => {
   const params = new URLSearchParams({
     To: req.query.to,
     From: process.env.TWILIO_NUMBER,
-    Url:
-      BASE_URL +
-      "/twilio-voice?name=" +
-      encodeURIComponent(req.query.name || "") +
-      "&address=" +
-      encodeURIComponent(req.query.address)
+    Url: BASE_URL + "/twilio-voice?name=" + encodeURIComponent(req.query.name || "") + "&address=" + encodeURIComponent(req.query.address)
   });
 
   await fetch(
-    "https://api.twilio.com/2010-04-01/Accounts/" +
-      process.env.TWILIO_SID +
-      "/Calls.json",
+    "https://api.twilio.com/2010-04-01/Accounts/" + process.env.TWILIO_SID + "/Calls.json",
     {
       method: "POST",
       headers: {
-        Authorization:
-          "Basic " +
-          Buffer.from(process.env.TWILIO_SID + ":" + process.env.TWILIO_AUTH).toString("base64"),
+        Authorization: "Basic " + Buffer.from(process.env.TWILIO_SID + ":" + process.env.TWILIO_AUTH).toString("base64"),
         "Content-Type": "application/x-www-form-urlencoded"
       },
       body: params
@@ -140,23 +121,6 @@ app.get("/call", async (req, res) => {
   );
 
   res.send("OK");
-});
-
-// =========================
-// WHISPER (ONLY YOU HEAR)
-// =========================
-app.post("/whisper", (req, res) => {
-  const sid = req.body.CallSid;
-
-  const session = sessions[sid] || {};
-  const name = session.name || "unknown";
-  const address = session.address || "no address";
-
-  res.type("text/xml").send(`
-<Response>
-  <Say>New lead. ${name}. ${address}.</Say>
-</Response>
-`);
 });
 
 // =========================
@@ -169,26 +133,32 @@ app.all("/twilio-voice", async (req, res) => {
   const name = req.query.name;
 
   if (!sessions[sid]) sessions[sid] = [];
-  if (!callState[sid]) callState[sid] = { introDone: false };
-
-  // ✅ store for whisper
-  sessions[sid].name = name;
-  sessions[sid].address = address;
+  if (!callState[sid]) callState[sid] = { introStage: 0 };
 
   let reply;
 
-  if (!callState[sid].introDone) {
-    callState[sid].introDone = true;
+  // =========================
+  // INTRO FLOW (NAME CHECK)
+  // =========================
+  if (callState[sid].introStage === 0) {
+    callState[sid].introStage = 1;
 
-    reply =
-      "Hey, this is Jack from Blackline Acquisitions out of Farmington — you had filled something out about getting an offer on your place at " +
-      address +
-      ", just wanted to follow up real quick.";
+    reply = name
+      ? "Hey this is Jack from Blackline — is this " + name + "?"
+      : "Hey this is Jack from Blackline.";
 
-  } else if (!input) {
-    reply = "Hey sorry, go ahead.";
+  } else if (callState[sid].introStage === 1) {
+
+    callState[sid].introStage = 2;
+
+    if (input && input.toLowerCase().includes("no")) {
+      reply = "Ah okay gotcha — sorry about that.";
+    } else {
+      reply = "Gotcha — you had filled something out about getting an offer on your place, just wanted to follow up real quick.";
+    }
 
   } else {
+
     sessions[sid].push({ role: "user", content: input });
 
     const ai = await fetch("https://api.anthropic.com/v1/messages", {
@@ -203,18 +173,18 @@ app.all("/twilio-voice", async (req, res) => {
         max_tokens: 120,
         temperature: 0.8,
         system: `
-You are Jack from Blackline Acquisitions in Farmington.
+You are Jack from Blackline.
 
-You are calling about a property at: ${address}
-
-They already filled out a form — this is a casual follow-up.
+Do NOT repeat the property or address more than once.
+Do NOT mention it again after the intro.
 
 Sound relaxed and conversational.
 
-If they show interest, say:
-"let me grab Chris real quick"
+DO NOT repeat what the caller says.
+DO NOT ask how the process works.
 
-Do not sound formal. Do not ask for the address.
+If they show interest:
+say "let me grab Chris real quick"
 `,
         messages: sessions[sid]
       })
@@ -238,15 +208,14 @@ Do not sound formal. Do not ask for the address.
   // TRANSFER
   // =========================
   if (reply.toLowerCase().includes("grab chris")) {
+
     let audioUrl = null;
 
     try {
       const tts = await fetch(BASE_URL + "/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: "Cool — I’ll grab Chris real quick and he’ll get you situated."
-        })
+        body: JSON.stringify({ text: "Cool — I’ll grab Chris real quick and he’ll get you situated." })
       });
 
       audioUrl = (await tts.json()).url;
@@ -255,9 +224,7 @@ Do not sound formal. Do not ask for the address.
     return res.type("text/xml").send(`
 <Response>
   ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>Connecting you now</Say>`}
-  <Dial answerOnBridge="true">
-    <Number url="${BASE_URL}/whisper">${CHRIS_NUMBER}</Number>
-  </Dial>
+  <Dial>${CHRIS_NUMBER}</Dial>
 </Response>
 `);
   }
