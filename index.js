@@ -12,8 +12,8 @@ app.use(express.static(__dirname));
 // MEMORY + STATE
 // =========================
 const sessions = {};
+const recordings = {};
 const callState = {};
-const recordings = [];
 
 let leads = [
   { id: 1, phone: "+12038334544", address: "123 Main St", status: "new" }
@@ -29,7 +29,7 @@ const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 app.get("/", (req, res) => res.send("RUNNING"));
 
 // =========================
-// DASHBOARD
+// DASHBOARD (UNCHANGED)
 // =========================
 app.get("/dashboard", (req, res) => {
   res.send(`
@@ -82,29 +82,21 @@ app.get("/dashboard", (req, res) => {
 app.get("/leads", (req, res) => res.json(leads));
 
 // =========================
-// ELEVENLABS (VOICE UPDATED)
+// ELEVENLABS
 // =========================
 app.post("/tts", async (req, res) => {
   try {
-    const r = await fetch(
-      "https://api.elevenlabs.io/v1/text-to-speech/4e32WqNVWRquDa1OcRYZ",
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": process.env.ELEVEN_KEY,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          text: req.body.text,
-          model_id: "eleven_turbo_v2",
-          optimize_streaming_latency: 3,
-          voice_settings: {
-            stability: 0.4,
-            similarity_boost: 0.8
-          }
-        })
-      }
-    );
+    const r = await fetch("https://api.elevenlabs.io/v1/text-to-speech/4e32WqNVWRquDa1OcRYZ", {
+      method: "POST",
+      headers: {
+        "xi-api-key": process.env.ELEVEN_KEY,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        text: req.body.text,
+        model_id: "eleven_turbo_v2"
+      })
+    });
 
     if (!r.ok) throw new Error();
 
@@ -151,8 +143,7 @@ app.get("/call", async (req, res) => {
     {
       method: "POST",
       headers: {
-        Authorization:
-          "Basic " + Buffer.from(process.env.TWILIO_SID + ":" + process.env.TWILIO_AUTH).toString("base64"),
+        Authorization: "Basic " + Buffer.from(process.env.TWILIO_SID + ":" + process.env.TWILIO_AUTH).toString("base64"),
         "Content-Type": "application/x-www-form-urlencoded"
       },
       body: params
@@ -163,7 +154,7 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// AI VOICE (FIXED PARSING + LOOP)
+// AI VOICE (REAL FIX)
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -175,14 +166,19 @@ app.all("/twilio-voice", async (req, res) => {
 
   let reply;
 
+  // 🔥 FIRST HIT (NO SPEECH YET)
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
+
     reply = "Hey, this is about your place on " + address + " — did I catch you at a bad time?";
-  }
-  else if (!input) {
-    reply = "Go ahead.";
-  }
-  else {
+
+  } else if (!input) {
+
+    // 🔥 DO NOT RESET
+    reply = "Hey sorry, go ahead.";
+
+  } else {
+
     sessions[sid].push({ role: "user", content: input });
 
     const ai = await fetch("https://api.anthropic.com/v1/messages", {
@@ -193,42 +189,16 @@ app.all("/twilio-voice", async (req, res) => {
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-3-haiku-20240307",
-        max_tokens: 60,
+        model: "claude-sonnet-4-5",
+        max_tokens: 120,
         temperature: 0.8,
-        system: `
-You are a casual real estate investor.
-
-Be natural, quick, and human.
-
-Rules:
-- 1 sentence preferred
-- Ask 1 question max
-- No fluff
-- Move forward
-`,
+        system: "You are a casual real estate investor. Be human, short, and ask one question at a time.",
         messages: sessions[sid]
       })
     });
 
     const data = await ai.json();
-    console.log("AI RAW:", JSON.stringify(data));
-
-    let text = "";
-
-    if (data && data.content && Array.isArray(data.content)) {
-      for (const block of data.content) {
-        if (block.type === "text") {
-          text += block.text;
-        }
-      }
-    }
-
-    reply = text.trim();
-
-    if (!reply) {
-      reply = "Yeah, sorry — go ahead.";
-    }
+    reply = data.content?.[0]?.text || "Got it.";
 
     sessions[sid].push({ role: "assistant", content: reply });
   }
@@ -249,11 +219,7 @@ Rules:
 <Response>
   <Gather input="speech" speechTimeout="auto" timeout="5" method="POST"
     action="/twilio-voice?address=${encodeURIComponent(address)}">
-    
-    ${audioUrl 
-      ? `<Play>${audioUrl}</Play>` 
-      : `<Say>${reply}</Say>`}
-      
+    ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>${reply}</Say>`}
   </Gather>
 </Response>
 `);
