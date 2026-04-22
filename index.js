@@ -82,7 +82,7 @@ app.get("/dashboard", (req, res) => {
 app.get("/leads", (req, res) => res.json(leads));
 
 // =========================
-// ELEVENLABS (SOFTER)
+// ELEVENLABS (SOFTER VOICE)
 // =========================
 app.post("/tts", async (req, res) => {
   try {
@@ -160,7 +160,7 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// AI VOICE (UPGRADED PROMPT)
+// AI VOICE (TRANSFER MODE)
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -175,7 +175,7 @@ app.all("/twilio-voice", async (req, res) => {
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
 
-    reply = "Hey, this is Nigga from Blackline Acquisitions out of Farmington — you had filled something out about getting an offer on your place at " + address + ", just wanted to follow up with you real quick.";
+    reply = "Hey, this is Jack from Blackline Acquisitions out of Farmington — you had filled something out about getting an offer on your place at " + address + ", just wanted to follow up with you real quick.";
 
   } else if (!input) {
 
@@ -197,16 +197,16 @@ app.all("/twilio-voice", async (req, res) => {
         max_tokens: 120,
         temperature: 0.8,
         system: `
-You are Nigga from Blackline Acquisitions in Farmington.
+You are Jack from Blackline Acquisitions in Farmington.
 
 You are calling about a property at: ${address}
 
 They already filled out a form — this is a casual follow-up.
 
 HOW YOU SOUND:
-- relaxed, slightly informal
+- relaxed, laid back
+- slightly informal
 - not perfectly polished
-- like you're just calling between things
 
 Use light filler words occasionally:
 "yeah", "gotcha", "okay", "honestly", "I mean", "alright so"
@@ -217,23 +217,30 @@ CONVERSATION STYLE:
 - 1–2 sentences max
 - don't sound scripted
 
+QUALIFY LIGHTLY:
+- are they considering selling?
+- timeline?
+- general situation?
+
+TRANSFER GOAL:
+If they show interest, naturally bring in Chris.
+
+Say things like:
+- "honestly you might be better off talking to my partner Chris"
+- "I can grab Chris real quick"
+- "it probably makes sense for me to loop Chris in"
+
+Do NOT sound formal about it.
+
 OBJECTIONS:
-- stay calm and casual
 - "yeah totally fair"
 - "no worries at all"
-- "a lot of people start there"
-
-Then lightly continue.
-
-GOAL:
-naturally move toward:
-- setting an appointment
-- OR transferring to Chris if they sound serious
+- "a lot of people are just exploring"
 
 IMPORTANT:
 - DO NOT ask for the address
-- DO NOT restart conversation
-- DO NOT sound formal
+- DO NOT mention appointments
+- DO NOT sound like a script
 `,
         messages: sessions[sid]
       })
