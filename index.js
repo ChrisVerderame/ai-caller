@@ -23,6 +23,10 @@ let queue = [];
 
 const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 
+// 👉 YOU: set this in Railway env vars
+// e.g. +1860XXXXXXX
+const CHRIS_NUMBER = process.env.CHRIS_NUMBER;
+
 // =========================
 // ROOT
 // =========================
@@ -34,55 +38,20 @@ app.get("/", (req, res) => res.send("RUNNING"));
 app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
-  <head>
-    <style>
-      body { margin:0; background:#000; color:#fff; font-family:sans-serif; }
-      .wrap { max-width:800px; margin:auto; padding:50px 20px; }
-      .logo img { height:220px; display:block; margin:auto; }
-      .btn { display:block; margin:30px auto; padding:14px 30px; background:#fff; color:#000; border:none; border-radius:12px; font-weight:bold; }
-      .row { display:flex; justify-content:space-between; padding:16px 0; border-bottom:1px solid #111; }
-    </style>
-  </head>
-  <body>
-    <div class="wrap">
-      <div class="logo"><img src="/logo.png"/></div>
-      <button class="btn" onclick="start()">START CALLING</button>
-      <div id="list"></div>
+  <body style="background:#000;color:#fff;font-family:sans-serif;">
+    <div style="max-width:800px;margin:auto;padding:40px;">
+      <img src="/logo.png" style="height:220px;display:block;margin:auto;">
+      <button onclick="fetch('/start-calls')" style="margin-top:30px;padding:15px;background:#fff;color:#000;font-weight:bold;border:none;border-radius:10px;">START CALLING</button>
     </div>
-
-    <script>
-      async function start(){
-        await fetch("/start-calls");
-        alert("Started");
-      }
-
-      async function load(){
-        const leads = await (await fetch("/leads")).json();
-        const list = document.getElementById("list");
-        list.innerHTML = "";
-
-        leads.forEach(l=>{
-          const row = document.createElement("div");
-          row.className = "row";
-          row.innerHTML = l.phone + " | " + l.address;
-          list.appendChild(row);
-        });
-      }
-
-      load();
-    </script>
   </body>
   </html>
   `);
 });
 
-// =========================
-// LEADS
-// =========================
 app.get("/leads", (req, res) => res.json(leads));
 
 // =========================
-// ELEVENLABS (SOFTER VOICE)
+// ELEVENLABS (SOFTER)
 // =========================
 app.post("/tts", async (req, res) => {
   try {
@@ -104,11 +73,8 @@ app.post("/tts", async (req, res) => {
       })
     });
 
-    if (!r.ok) throw new Error();
-
     const audio = await r.arrayBuffer();
     const file = "speech_" + Date.now() + ".mp3";
-
     fs.writeFileSync(path.join(__dirname, file), Buffer.from(audio));
 
     res.json({ url: BASE_URL + "/" + file });
@@ -160,7 +126,18 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// AI VOICE (TRANSFER MODE)
+// WHISPER TO YOU (OPTIONAL)
+// =========================
+app.post("/whisper", (req, res) => {
+  res.type("text/xml").send(`
+<Response>
+  <Say>New inbound lead. You're now connected.</Say>
+</Response>
+`);
+});
+
+// =========================
+// AI VOICE (TRANSFER ENABLED)
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -175,7 +152,7 @@ app.all("/twilio-voice", async (req, res) => {
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
 
-    reply = "Hey, this is Jack from Blackline Acquisitions out of Farmington — you had filled something out about getting an offer on your place at " + address + ", just wanted to follow up with you real quick.";
+    reply = "Hey, this is Jack from Blackline Acquisitions out of Farmington — you had filled something out about getting an offer on your place at " + address + ", just wanted to follow up real quick.";
 
   } else if (!input) {
 
@@ -203,44 +180,16 @@ You are calling about a property at: ${address}
 
 They already filled out a form — this is a casual follow-up.
 
-HOW YOU SOUND:
-- relaxed, laid back
-- slightly informal
-- not perfectly polished
+Sound relaxed, slightly informal.
 
-Use light filler words occasionally:
-"yeah", "gotcha", "okay", "honestly", "I mean", "alright so"
+Use filler naturally:
+"yeah", "gotcha", "honestly", "alright so"
 
-CONVERSATION STYLE:
-- respond to what they said first
-- then ask one simple question
-- 1–2 sentences max
-- don't sound scripted
+If they show interest, say:
+"let me grab Chris real quick"
 
-QUALIFY LIGHTLY:
-- are they considering selling?
-- timeline?
-- general situation?
-
-TRANSFER GOAL:
-If they show interest, naturally bring in Chris.
-
-Say things like:
-- "honestly you might be better off talking to my partner Chris"
-- "I can grab Chris real quick"
-- "it probably makes sense for me to loop Chris in"
-
-Do NOT sound formal about it.
-
-OBJECTIONS:
-- "yeah totally fair"
-- "no worries at all"
-- "a lot of people are just exploring"
-
-IMPORTANT:
-- DO NOT ask for the address
-- DO NOT mention appointments
-- DO NOT sound like a script
+DO NOT mention transfer formally.
+DO NOT ask for the address.
 `,
         messages: sessions[sid]
       })
@@ -249,22 +198,33 @@ IMPORTANT:
     const data = await ai.json();
 
     let text = "";
-
-    if (data && data.content && Array.isArray(data.content)) {
-      for (const block of data.content) {
-        if (block.type === "text") {
-          text += block.text;
-        }
+    if (data?.content) {
+      for (const b of data.content) {
+        if (b.type === "text") text += b.text;
       }
     }
 
     reply = text.trim();
 
     if (!reply) {
-      reply = "Yeah, just wanted to follow up with you — what were you thinking on it?";
+      reply = "Yeah — what were you thinking on it?";
     }
 
     sessions[sid].push({ role: "assistant", content: reply });
+  }
+
+  // =========================
+  // 🔥 TRANSFER DETECTION
+  // =========================
+  if (reply.toLowerCase().includes("grab chris")) {
+    return res.type("text/xml").send(`
+<Response>
+  <Say>Alright, hang on one sec.</Say>
+  <Dial>
+    <Number url="${BASE_URL}/whisper">${CHRIS_NUMBER}</Number>
+  </Dial>
+</Response>
+`);
   }
 
   let audioUrl = null;
