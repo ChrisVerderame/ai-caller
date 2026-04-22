@@ -145,72 +145,33 @@ app.all("/twilio-voice", async (req, res) => {
   const address = req.query.address;
 
   if (!sessions[sid]) sessions[sid] = [];
-  if (!callState[sid]) callState[sid] = { introDone: false };
+  if (!callState[sid]) callState[sid] = { introStage: 0 };
 
   let reply;
 
-  // ✅ FORCED OPENING
-  if (!callState[sid].introDone) {
-    callState[sid].introDone = true;
+  // =========================
+  // INTRO STAGE 1 (ASK NAME)
+  // =========================
+  if (callState[sid].introStage === 0) {
+    callState[sid].introStage = 1;
+    reply = `Hey, is this the owner of ${address}?`;
+  }
 
-    reply = `Hey, is this the owner of ${address}? awesome — just reaching out about the place, you had filled something out about getting an offer`;
-  } else if (!input) {
+  // =========================
+  // INTRO STAGE 2 (EXPLAIN)
+  // =========================
+  else if (callState[sid].introStage === 1) {
+    callState[sid].introStage = 2;
+    reply = `awesome — just reaching out, you had filled something out about getting an offer on the place`;
+  }
+
+  // =========================
+  // NORMAL CONVO
+  // =========================
+  else if (!input) {
     reply = "yeah go ahead — I got you";
   } else {
     sessions[sid].push({ role: "user", content: input });
-
-    const ai = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": process.env.ANTHROPIC_KEY,
-        "content-type": "application/json",
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 120,
-        temperature: 0.9,
-        system: `
-You are Jack from Blackline Acquisitions.
-
-You are calling about this property: ${address}.
-They already submitted it. You already know it.
-
-Never ask for the address.
-
-GOAL:
-- move toward seeing the property
-
-RULES:
-- do NOT ask about price, mortgage, or finances
-- do NOT repeat yourself
-- do NOT repeat the caller
-- do NOT suggest a "call"
-
-BOOKING:
-- if no time given → ask:
-"what’s a good time to take a quick look at it?"
-
-- if time given → confirm:
-"perfect — we’ll follow up with you a few hours prior via text just to confirm"
-
-- if they want now:
-"let me grab Chris real quick"
-`,
-        messages: sessions[sid]
-      })
-    });
-
-    const data = await ai.json();
-
-    let text = "";
-    if (data?.content) {
-      for (const b of data.content) {
-        if (b.type === "text") text += b.text;
-      }
-    }
-
-    reply = text.trim() || "gotcha — what’s a good time to take a quick look at it?";
 
     const lower = (input || "").toLowerCase();
 
@@ -226,19 +187,80 @@ BOOKING:
       lower.includes("yes") ||
       lower.includes("yeah") ||
       lower.includes("interested") ||
-      lower.includes("sure") ||
-      lower.includes("okay");
+      lower.includes("maybe") ||
+      lower.includes("sure");
 
-    // ✅ CORRECT FLOW
-    if (gaveTime) {
-      reply = "perfect — we’ll follow up with you a few hours prior via text just to confirm";
-    } else if (interested) {
-      reply = "gotcha — what’s a good time to take a quick look at it?";
+    const ai = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": process.env.ANTHROPIC_KEY,
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5",
+        max_tokens: 120,
+        temperature: 0.9,
+        system: `
+You are Jack from Blackline.
+
+This is a casual follow-up to a form they filled out.
+
+Speak naturally like a human.
+
+Goals:
+- understand their situation
+- move toward seeing the property (not a phone call)
+
+Rules:
+- do not ask about price or mortgage
+- do not repeat yourself
+- do not sound scripted
+
+Flow:
+- acknowledge what they say
+- ask simple follow-ups
+- don’t rush
+
+If they seem interested:
+ask: "are you just exploring or thinking about selling?"
+
+Only AFTER they show intent:
+ask: "what’s a good time to take a look at it?"
+
+If they give a time:
+say: "perfect — we’ll follow up with you a few hours prior via text just to confirm"
+
+If they want someone now:
+say: "let me grab Chris real quick"
+`,
+        messages: sessions[sid]
+      })
+    });
+
+    const data = await ai.json();
+
+    let text = "";
+    if (data?.content) {
+      for (const b of data.content) {
+        if (b.type === "text") text += b.text;
+      }
     }
 
-    // ❌ BLOCK CALL LANGUAGE
+    reply = text.trim() || "gotcha — what’s got you thinking about it?";
+
+    // =========================
+    // BOOKING LOGIC
+    // =========================
+    if (gaveTime) {
+      reply = "perfect — we’ll follow up with you a few hours prior via text just to confirm";
+    } else if (interested && !lower.includes("sell")) {
+      reply = "gotcha — are you just exploring or thinking about selling it?";
+    }
+
+    // block bad phrasing
     if (reply.toLowerCase().includes("call")) {
-      reply = "gotcha — what’s a good time to take a quick look at it?";
+      reply = "gotcha — what’s a good time to take a look at it?";
     }
 
     sessions[sid].push({ role: "assistant", content: reply });
