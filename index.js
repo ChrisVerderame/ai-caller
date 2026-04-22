@@ -9,13 +9,13 @@ app.use(express.json());
 app.use(express.static(__dirname));
 
 // =========================
-// MEMORY + STATE
+// MEMORY
 // =========================
 const sessions = {};
 const callState = {};
 
 let leads = [
-  { id: 1, phone: "+12038334544", address: "123 Main St", status: "new" }
+  { id: 1, phone: "+12038334544", address: "123 Main St" }
 ];
 
 let queue = [];
@@ -46,30 +46,37 @@ app.get("/dashboard", (req, res) => {
 app.get("/leads", (req, res) => res.json(leads));
 
 // =========================
-// ELEVENLABS (FAST)
+// ELEVENLABS
 // =========================
 app.post("/tts", async (req, res) => {
   try {
-    const r = await fetch("https://api.elevenlabs.io/v1/text-to-speech/bxPMdBTxMI0LMo67TDEK", {
-      method: "POST",
-      headers: {
-        "xi-api-key": process.env.ELEVEN_KEY,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        text: req.body.text,
-        model_id: "eleven_turbo_v2",
-        optimize_streaming_latency: 3
-      })
-    });
+    const r = await fetch(
+      "https://api.elevenlabs.io/v1/text-to-speech/4e32WqNVWRquDa1OcRYZ",
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": process.env.ELEVEN_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          text: req.body.text,
+          model_id: "eleven_turbo_v2",
+          optimize_streaming_latency: 3
+        })
+      }
+    );
+
+    if (!r.ok) throw new Error();
 
     const audio = await r.arrayBuffer();
     const file = "speech_" + Date.now() + ".mp3";
+
     fs.writeFileSync(path.join(__dirname, file), Buffer.from(audio));
 
     res.json({ url: BASE_URL + "/" + file });
 
-  } catch {
+  } catch (err) {
+    console.log("TTS ERROR:", err.message);
     res.json({ url: null });
   }
 });
@@ -88,27 +95,42 @@ async function processQueue() {
 
   const lead = queue.shift();
 
-  await fetch(BASE_URL + "/call?to=" + lead.phone + "&address=" + encodeURIComponent(lead.address));
+  await fetch(
+    BASE_URL +
+      "/call?to=" +
+      lead.phone +
+      "&address=" +
+      encodeURIComponent(lead.address)
+  );
 
-  setTimeout(processQueue, 10000);
+  setTimeout(processQueue, 12000);
 }
 
 app.get("/call", async (req, res) => {
   const params = new URLSearchParams({
     To: req.query.to,
     From: process.env.TWILIO_NUMBER,
-    Url: BASE_URL + "/twilio-voice?address=" + encodeURIComponent(req.query.address)
+    Url:
+      BASE_URL +
+      "/twilio-voice?address=" +
+      encodeURIComponent(req.query.address),
   });
 
   await fetch(
-    "https://api.twilio.com/2010-04-01/Accounts/" + process.env.TWILIO_SID + "/Calls.json",
+    "https://api.twilio.com/2010-04-01/Accounts/" +
+      process.env.TWILIO_SID +
+      "/Calls.json",
     {
       method: "POST",
       headers: {
-        Authorization: "Basic " + Buffer.from(process.env.TWILIO_SID + ":" + process.env.TWILIO_AUTH).toString("base64"),
-        "Content-Type": "application/x-www-form-urlencoded"
+        Authorization:
+          "Basic " +
+          Buffer.from(
+            process.env.TWILIO_SID + ":" + process.env.TWILIO_AUTH
+          ).toString("base64"),
+        "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: params
+      body: params,
     }
   );
 
@@ -116,7 +138,7 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// AI VOICE (FIXED)
+// AI VOICE (REAL FIX)
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -124,26 +146,33 @@ app.all("/twilio-voice", async (req, res) => {
   const address = req.query.address;
 
   if (!sessions[sid]) sessions[sid] = [];
-  if (!callState[sid]) callState[sid] = { introDone: false, lastReply: null };
+  if (!callState[sid]) callState[sid] = { introDone: false };
 
-  let reply;
+  let reply = "";
 
+  // INTRO
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
 
-    reply = "Hey, this is Jack from Blackline in Farmington — you had filled something out about getting an offer on " + address + ", just wanted to reach out and see if we could come take a look at it.";
+    reply =
+      "Hey, this is Jack from Blackline Acquisitions out of Farmington — you filled something out about getting an offer on your place at " +
+      address +
+      ", just wanted to follow up.";
+  }
 
-    callState[sid].lastReply = reply;
+  // NO INPUT
+  else if (!input) {
+    reply = "Yeah go ahead";
+  }
 
-  } else if (!input) {
-
-    reply = "Hey sorry, go ahead.";
-
-  } else {
-
+  // NORMAL FLOW
+  else {
     sessions[sid].push({ role: "user", content: input });
 
-    let text = "";
+    // keep memory tight
+    if (sessions[sid].length > 8) {
+      sessions[sid] = sessions[sid].slice(-8);
+    }
 
     try {
       const ai = await fetch("https://api.anthropic.com/v1/messages", {
@@ -151,41 +180,48 @@ app.all("/twilio-voice", async (req, res) => {
         headers: {
           "x-api-key": process.env.ANTHROPIC_KEY,
           "content-type": "application/json",
-          "anthropic-version": "2023-06-01"
+          "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
           model: "claude-3-haiku-20240307",
-          max_tokens: 90,
-          temperature: 0.8,
+          max_tokens: 80,
+          temperature: 0.9,
           system: `
-You are Jack from Blackline Acquisitions in Farmington.
+You are Jack from Blackline Acquisitions.
 
-This is a follow-up call. Be natural and conversational.
-Respond directly to what they said, then ask something.
+This is a follow-up call.
+
+You are having a natural conversation.
+
+Respond directly to what they said.
+Keep it short.
+Then ask something relevant.
 `,
-          messages: sessions[sid]
-        })
+          messages: sessions[sid],
+        }),
       });
 
       const data = await ai.json();
 
+      console.log("AI RAW:", JSON.stringify(data));
+
       if (data?.content) {
         for (const block of data.content) {
-          if (block.type === "text") {
-            text += block.text;
+          if (block.type === "text" && block.text) {
+            reply += block.text;
           }
         }
       }
 
-    } catch {}
+      reply = reply.trim();
+    } catch (err) {
+      console.log("AI ERROR:", err.message);
+    }
 
-    reply = text.trim();
-
-    // 🔥 LOOP FIX (ONLY CHANGE)
+    // 🔥 FINAL SAFETY (NON-LOOPING)
     if (!reply || reply.length < 5) {
-      reply = "Yeah go ahead."; // neutral, never loops
-    } else {
-      callState[sid].lastReply = reply; // only store real AI replies
+      reply =
+        "Gotcha — are you looking to sell soon or just seeing what kind of offers you'd get?";
     }
 
     sessions[sid].push({ role: "assistant", content: reply });
@@ -197,7 +233,7 @@ Respond directly to what they said, then ask something.
     const tts = await fetch(BASE_URL + "/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: reply })
+      body: JSON.stringify({ text: reply }),
     });
 
     audioUrl = (await tts.json()).url;
@@ -205,8 +241,8 @@ Respond directly to what they said, then ask something.
 
   res.type("text/xml").send(`
 <Response>
-  <Gather input="speech" speechTimeout="auto" timeout="5" method="POST"
-    action="/twilio-voice?address=${encodeURIComponent(address)}">
+  <Gather input="speech" bargeIn="true" speechTimeout="auto" timeout="5"
+    action="/twilio-voice?address=${encodeURIComponent(address)}" method="POST">
     ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>${reply}</Say>`}
   </Gather>
 </Response>
