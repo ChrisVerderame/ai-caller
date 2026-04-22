@@ -28,7 +28,7 @@ const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 app.get("/", (req, res) => res.send("RUNNING"));
 
 // =========================
-// DASHBOARD (YOUR ORIGINAL STYLE)
+// DASHBOARD (YOUR UI)
 // =========================
 app.get("/dashboard", (req, res) => {
   res.send(`
@@ -184,14 +184,12 @@ app.post("/tts", async (req, res) => {
     if (!response.ok) throw new Error("blocked");
 
     const audio = await response.arrayBuffer();
-
     const fileName = "speech_" + Date.now() + ".mp3";
     fs.writeFileSync(path.join(__dirname, fileName), Buffer.from(audio));
 
     res.json({ url: BASE_URL + "/" + fileName });
 
   } catch {
-    // fallback trigger
     res.json({ url: null });
   }
 });
@@ -241,7 +239,7 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// AI VOICE
+// AI VOICE (IMPROVED)
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -268,7 +266,35 @@ app.all("/twilio-voice", async (req, res) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-5",
-        max_tokens: 60,
+        max_tokens: 120,
+        temperature: 0.8,
+        system: `
+You are a real estate investor calling a homeowner.
+
+Be casual, natural, and conversational.
+
+RULES:
+- Keep responses short (1–2 sentences)
+- Ask ONE question at a time
+- Never sound scripted
+- Slight imperfection is good
+
+FLOW:
+- Ask if they're open to selling
+- Ask timeline
+- Ask condition
+- Ask motivation
+- Move toward next step
+
+If they hesitate:
+- stay relaxed
+- don't push hard
+
+If they show interest:
+- move forward quickly
+
+Sound like a real human, not AI.
+`,
         messages: sessions[sid]
       })
     });
