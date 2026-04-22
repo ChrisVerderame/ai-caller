@@ -22,9 +22,6 @@ let leads = [
 let queue = [];
 
 const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
-
-// 👉 YOU: set this in Railway env vars
-// e.g. +1860XXXXXXX
 const CHRIS_NUMBER = process.env.CHRIS_NUMBER;
 
 // =========================
@@ -51,7 +48,7 @@ app.get("/dashboard", (req, res) => {
 app.get("/leads", (req, res) => res.json(leads));
 
 // =========================
-// ELEVENLABS (SOFTER)
+// ELEVENLABS
 // =========================
 app.post("/tts", async (req, res) => {
   try {
@@ -73,8 +70,11 @@ app.post("/tts", async (req, res) => {
       })
     });
 
+    if (!r.ok) throw new Error();
+
     const audio = await r.arrayBuffer();
     const file = "speech_" + Date.now() + ".mp3";
+
     fs.writeFileSync(path.join(__dirname, file), Buffer.from(audio));
 
     res.json({ url: BASE_URL + "/" + file });
@@ -126,18 +126,18 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// WHISPER TO YOU (OPTIONAL)
+// WHISPER (YOU HEAR THIS)
 // =========================
 app.post("/whisper", (req, res) => {
   res.type("text/xml").send(`
 <Response>
-  <Say>New inbound lead. You're now connected.</Say>
+  <Say>New inbound lead. You're connected.</Say>
 </Response>
 `);
 });
 
 // =========================
-// AI VOICE (TRANSFER ENABLED)
+// AI VOICE
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -180,16 +180,12 @@ You are calling about a property at: ${address}
 
 They already filled out a form — this is a casual follow-up.
 
-Sound relaxed, slightly informal.
-
-Use filler naturally:
-"yeah", "gotcha", "honestly", "alright so"
+Sound relaxed and conversational.
 
 If they show interest, say:
 "let me grab Chris real quick"
 
-DO NOT mention transfer formally.
-DO NOT ask for the address.
+Do not sound formal. Do not ask for the address.
 `,
         messages: sessions[sid]
       })
@@ -214,12 +210,25 @@ DO NOT ask for the address.
   }
 
   // =========================
-  // 🔥 TRANSFER DETECTION
+  // 🔥 TRANSFER LOGIC (FIXED VOICE)
   // =========================
   if (reply.toLowerCase().includes("grab chris")) {
+
+    let audioUrl = null;
+
+    try {
+      const tts = await fetch(BASE_URL + "/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "Cool — I’ll grab Chris real quick and he’ll get you situated." })
+      });
+
+      audioUrl = (await tts.json()).url;
+    } catch {}
+
     return res.type("text/xml").send(`
 <Response>
-  <Say>Alright, hang on one sec.</Say>
+  ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>Connecting you now</Say>`}
   <Dial>
     <Number url="${BASE_URL}/whisper">${CHRIS_NUMBER}</Number>
   </Dial>
