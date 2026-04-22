@@ -6,75 +6,41 @@ const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// 🧠 MEMORY
+// 🧠 MEMORY (per call)
 const sessions = {};
 
-// 🧠 DATA
-let leads = [];
+// 🧠 LEADS (replace later with Sheets)
+let leads = [
+  { phone: "+12038334544", address: "123 Main St" },
+  { phone: "+18605551234", address: "22 Main St" }
+];
+
 let queue = [];
 let callCount = 0;
-
-// 🔥 LOAD LEADS FROM GOOGLE SHEETS (APPS SCRIPT)
-async function loadLeads() {
-  try {
-    const res = await fetch("https://script.google.com/macros/s/AKfycbxqvszQlp_KHUNl9zyN-5uG2mSq_w4RbgE-HsSk8h7TRMSA0PXZgjieyDtClN5DoroVgQ/exec");
-
-    const text = await res.text();
-    console.log("RAW SHEET RESPONSE:", text);
-
-    const data = JSON.parse(text);
-
-    leads = data.map(l => ({
-      name: l.name,
-      phone: l.phone,
-      address: l.address,
-      called:
-        String(l.called).toLowerCase() === "true" ||
-        String(l.called).toLowerCase() === "yes"
-    }));
-
-    console.log("Loaded leads:", leads);
-
-  } catch (err) {
-    console.error("Sheet error:", err);
-  }
-}
 
 // 👉 TEST ROUTE
 app.get("/", (req, res) => {
   res.send("Server running");
 });
 
+
 // 🔥 LEADS API
-app.get("/leads", async (req, res) => {
-  await loadLeads();
+app.get("/leads", (req, res) => {
   res.json(leads);
 });
 
+
 // 🔥 START AUTO CALLS
 app.get("/start-calls", async (req, res) => {
-  await loadLeads();
-
-  const fresh = leads.filter(l => !l.called);
-
-  console.log("Fresh leads:", fresh);
-
-  queue = [...fresh].sort(() => Math.random() - 0.5);
-
+  queue = [...leads].sort(() => Math.random() - 0.5);
   processQueue();
-
-  res.send("Calling " + queue.length + " leads");
+  res.send("Started");
 });
 
 async function processQueue() {
-  if (queue.length === 0) {
-    console.log("Queue complete");
-    return;
-  }
+  if (queue.length === 0) return;
 
   const lead = queue.shift();
-
-  console.log("Calling lead:", lead);
 
   await fetch(
     `https://ai-caller-production-88df.up.railway.app/call?to=${lead.phone}&address=${encodeURIComponent(lead.address)}`
@@ -82,6 +48,7 @@ async function processQueue() {
 
   setTimeout(processQueue, 15000);
 }
+
 
 // 🔥 MANUAL CALL
 app.get("/call", async (req, res) => {
@@ -92,7 +59,7 @@ app.get("/call", async (req, res) => {
   const to = req.query.to || "+12038334544";
   const address = req.query.address || "your property";
 
-  console.log("Calling:", to, "| Address:", address);
+  console.log("Calling:", to);
 
   const params = new URLSearchParams({
     To: to,
@@ -118,7 +85,8 @@ app.get("/call", async (req, res) => {
   res.send(await response.text());
 });
 
-// 🔥 AI VOICE HANDLER
+
+// 🔥 AI VOICE HANDLER (STABLE + SPEECH FIXED)
 app.all("/twilio-voice", async (req, res) => {
   try {
     const userInput = req.body.SpeechResult;
@@ -129,7 +97,7 @@ app.all("/twilio-voice", async (req, res) => {
 
     if (!sessions[callSid]) sessions[callSid] = [];
 
-    // ❌ No speech fallback
+    // 🔥 HANDLE NO SPEECH
     if (!userInput) {
       res.type("text/xml");
       return res.send(`
@@ -166,8 +134,8 @@ You are a real estate acquisitions caller.
 
 Property: ${address}
 
-Talk casually, like a normal human.
-Keep it short. Ask one question at a time.
+Talk casually like a real human.
+Short responses. One question at a time.
 `,
           messages: sessions[callSid]
         })
@@ -211,79 +179,160 @@ Keep it short. Ask one question at a time.
   }
 });
 
-// 🔥 DASHBOARD (ELITE)
+
+// 🔥 ELITE DASHBOARD
 app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
   <head>
     <title>AI Caller</title>
     <style>
-      body { margin:0; font-family:sans-serif; background:#0b0f19; color:white; display:flex; }
-      .sidebar { width:240px; background:#020617; padding:20px; }
-      .main { flex:1; padding:30px; }
-      .btn { background:#3b82f6; padding:10px 16px; border:none; border-radius:8px; color:white; cursor:pointer; }
-      table { width:100%; margin-top:20px; }
-      td, th { padding:10px; }
-      .call { background:#22c55e; border:none; padding:6px; border-radius:6px; }
+      body {
+        margin: 0;
+        font-family: -apple-system, sans-serif;
+        background: #0b0f19;
+        color: white;
+        display: flex;
+      }
+
+      .sidebar {
+        width: 240px;
+        background: #020617;
+        padding: 24px;
+        height: 100vh;
+      }
+
+      .logo {
+        font-size: 20px;
+        margin-bottom: 30px;
+      }
+
+      .main {
+        flex: 1;
+        padding: 30px;
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 30px;
+      }
+
+      .btn {
+        background: linear-gradient(135deg,#3b82f6,#6366f1);
+        border: none;
+        padding: 10px 18px;
+        border-radius: 10px;
+        color: white;
+        cursor: pointer;
+      }
+
+      .cards {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 30px;
+      }
+
+      .card {
+        background: #111827;
+        padding: 20px;
+        border-radius: 14px;
+        width: 200px;
+      }
+
+      table {
+        width: 100%;
+      }
+
+      td, th {
+        padding: 12px;
+      }
+
+      .call-btn {
+        background: #22c55e;
+        border: none;
+        padding: 6px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
     </style>
   </head>
+
   <body>
 
-  <div class="sidebar">
-    <h2>AI Caller</h2>
-  </div>
+    <div class="sidebar">
+      <div class="logo">AI Caller</div>
+    </div>
 
-  <div class="main">
-    <h1>Dashboard</h1>
-    <button class="btn" onclick="start()">Start Calling</button>
+    <div class="main">
 
-    <table id="table">
-      <tr>
-        <th>Name</th>
-        <th>Phone</th>
-        <th>Address</th>
-        <th>Status</th>
-        <th></th>
-      </tr>
-    </table>
-  </div>
+      <div class="topbar">
+        <h1>Dashboard</h1>
+        <button class="btn" onclick="start()">Start Calling</button>
+      </div>
 
-  <script>
-    async function load() {
-      const res = await fetch("/leads");
-      const data = await res.json();
+      <div class="cards">
+        <div class="card">
+          <h2 id="total">0</h2>
+          <p>Leads</p>
+        </div>
+        <div class="card">
+          <h2 id="calls">0</h2>
+          <p>Calls</p>
+        </div>
+      </div>
 
-      const table = document.getElementById("table");
+      <table id="table">
+        <tr>
+          <th>Phone</th>
+          <th>Address</th>
+          <th></th>
+        </tr>
+      </table>
 
-      data.forEach(l => {
-        const row = document.createElement("tr");
+    </div>
 
-        row.innerHTML = \`
-          <td>\${l.name}</td>
-          <td>\${l.phone}</td>
-          <td>\${l.address}</td>
-          <td>\${l.called ? "✅ Called" : "❌ New"}</td>
-          <td><button class="call" onclick="callLead('\${l.phone}','\${l.address}')">Call</button></td>
-        \`;
+    <script>
+      let calls = 0;
 
-        table.appendChild(row);
-      });
-    }
+      async function load() {
+        const res = await fetch("/leads");
+        const data = await res.json();
 
-    async function callLead(phone, address) {
-      await fetch(\`/call?to=\${phone}&address=\${encodeURIComponent(address)}\`);
-    }
+        document.getElementById("total").innerText = data.length;
 
-    async function start() {
-      await fetch("/start-calls");
-    }
+        const table = document.getElementById("table");
 
-    load();
-  </script>
+        data.forEach(l => {
+          const row = document.createElement("tr");
+
+          row.innerHTML = \`
+            <td>\${l.phone}</td>
+            <td>\${l.address}</td>
+            <td><button class="call-btn" onclick="callLead('\${l.phone}','\${l.address}')">Call</button></td>
+          \`;
+
+          table.appendChild(row);
+        });
+      }
+
+      async function callLead(phone, address) {
+        await fetch(\`/call?to=\${phone}&address=\${encodeURIComponent(address)}\`);
+        calls++;
+        document.getElementById("calls").innerText = calls;
+      }
+
+      async function start() {
+        await fetch("/start-calls");
+      }
+
+      load();
+    </script>
 
   </body>
   </html>
   `);
 });
+
 
 app.listen(process.env.PORT || 3000);
