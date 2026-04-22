@@ -9,25 +9,31 @@ app.use(express.json());
 // 🧠 MEMORY
 const sessions = {};
 
-// 🧠 LEADS FROM SHEET
+// 🧠 DATA
 let leads = [];
 let queue = [];
 let callCount = 0;
 
-// 🔥 LOAD LEADS FROM APPS SCRIPT
+// 🔥 LOAD LEADS FROM GOOGLE SHEETS (APPS SCRIPT)
 async function loadLeads() {
   try {
-    const res = await fetch("https://script.google.com/u/0/home/projects/1Tz9TPDK-yntwss_R9MUsYHlcrXHDlgnoeWFQCTQ-fX0h7fINstCmeVrg/edit");
-    const data = await res.json();
+    const res = await fetch("https://script.google.com/macros/s/AKfycbxqvszQlp_KHUNl9zyN-5uG2mSq_w4RbgE-HsSk8h7TRMSA0PXZgjieyDtClN5DoroVgQ/exec");
+
+    const text = await res.text();
+    console.log("RAW SHEET RESPONSE:", text);
+
+    const data = JSON.parse(text);
 
     leads = data.map(l => ({
       name: l.name,
       phone: l.phone,
       address: l.address,
-      called: l.called === true || l.called === "TRUE"
+      called:
+        String(l.called).toLowerCase() === "true" ||
+        String(l.called).toLowerCase() === "yes"
     }));
 
-    console.log("Loaded leads:", leads.length);
+    console.log("Loaded leads:", leads);
 
   } catch (err) {
     console.error("Sheet error:", err);
@@ -51,6 +57,8 @@ app.get("/start-calls", async (req, res) => {
 
   const fresh = leads.filter(l => !l.called);
 
+  console.log("Fresh leads:", fresh);
+
   queue = [...fresh].sort(() => Math.random() - 0.5);
 
   processQueue();
@@ -59,9 +67,14 @@ app.get("/start-calls", async (req, res) => {
 });
 
 async function processQueue() {
-  if (queue.length === 0) return;
+  if (queue.length === 0) {
+    console.log("Queue complete");
+    return;
+  }
 
   const lead = queue.shift();
+
+  console.log("Calling lead:", lead);
 
   await fetch(
     `https://ai-caller-production-88df.up.railway.app/call?to=${lead.phone}&address=${encodeURIComponent(lead.address)}`
@@ -79,7 +92,7 @@ app.get("/call", async (req, res) => {
   const to = req.query.to || "+12038334544";
   const address = req.query.address || "your property";
 
-  console.log("Calling:", to);
+  console.log("Calling:", to, "| Address:", address);
 
   const params = new URLSearchParams({
     To: to,
@@ -105,7 +118,7 @@ app.get("/call", async (req, res) => {
   res.send(await response.text());
 });
 
-// 🔥 AI VOICE
+// 🔥 AI VOICE HANDLER
 app.all("/twilio-voice", async (req, res) => {
   try {
     const userInput = req.body.SpeechResult;
@@ -116,6 +129,7 @@ app.all("/twilio-voice", async (req, res) => {
 
     if (!sessions[callSid]) sessions[callSid] = [];
 
+    // ❌ No speech fallback
     if (!userInput) {
       res.type("text/xml");
       return res.send(`
@@ -152,8 +166,8 @@ You are a real estate acquisitions caller.
 
 Property: ${address}
 
-Talk like a real human.
-Keep it short.
+Talk casually, like a normal human.
+Keep it short. Ask one question at a time.
 `,
           messages: sessions[callSid]
         })
@@ -197,7 +211,7 @@ Keep it short.
   }
 });
 
-// 🔥 DASHBOARD
+// 🔥 DASHBOARD (ELITE)
 app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
