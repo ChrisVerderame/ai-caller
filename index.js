@@ -154,7 +154,7 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// AI VOICE (REAL FIX)
+// AI VOICE (FOLLOW-UP MODE)
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -166,15 +166,14 @@ app.all("/twilio-voice", async (req, res) => {
 
   let reply;
 
-  // 🔥 FIRST HIT (NO SPEECH YET)
+  // 🔥 FOLLOW-UP INTRO
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
 
-    reply = "Hey, this is about your place on " + address + " — did I catch you at a bad time?";
+    reply = "Hey, this is Jack from Blackline Acquisitions out of Farmington — you had filled something out about getting an offer on your place at " + address + ", just wanted to follow up with you real quick.";
 
   } else if (!input) {
 
-    // 🔥 DO NOT RESET
     reply = "Hey sorry, go ahead.";
 
   } else {
@@ -192,13 +191,60 @@ app.all("/twilio-voice", async (req, res) => {
         model: "claude-sonnet-4-5",
         max_tokens: 120,
         temperature: 0.8,
-        system: "You are a casual real estate investor. Be human, short, and ask one question at a time.",
+        system: `
+You are Jack from Blackline Acquisitions in Farmington.
+
+This is NOT a cold call.
+The homeowner already filled out a form requesting an offer.
+
+Tone:
+- relaxed, confident, not salesy
+- assume familiarity (this is a follow-up)
+- never sound like you're calling randomly
+
+Goals:
+1. Confirm interest
+2. Understand timeline
+3. Understand property condition
+4. Identify motivation
+5. Move toward:
+   - setting an appointment
+   - OR transferring to Chris if they are a strong lead
+
+Rules:
+- 1–2 sentences max
+- Ask one question at a time
+- No scripts
+- Keep it natural
+- If they’re warm → guide forward
+- If they’re hot → push next step
+
+Examples:
+- "Gotcha — yeah I saw you filled that out, just wanted to connect."
+- "Are you still looking to sell or just seeing what kind of offers you'd get?"
+- "What were you thinking timeline-wise?"
+`,
         messages: sessions[sid]
       })
     });
 
     const data = await ai.json();
-    reply = data.content?.[0]?.text || "Got it.";
+
+    let text = "";
+
+    if (data && data.content && Array.isArray(data.content)) {
+      for (const block of data.content) {
+        if (block.type === "text") {
+          text += block.text;
+        }
+      }
+    }
+
+    reply = text.trim();
+
+    if (!reply) {
+      reply = "Yeah, just wanted to follow up with you — what were you thinking on it?";
+    }
 
     sessions[sid].push({ role: "assistant", content: reply });
   }
