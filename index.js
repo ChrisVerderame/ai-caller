@@ -9,7 +9,7 @@ app.use(express.json());
 // 🧠 MEMORY (per call)
 const sessions = {};
 
-// 🧠 LEADS (replace later with Sheets)
+// 🧠 LEADS (WORKING STATIC VERSION)
 let leads = [
   { phone: "+12038334544", address: "123 Main St" },
   { phone: "+18605551234", address: "22 Main St" }
@@ -23,12 +23,10 @@ app.get("/", (req, res) => {
   res.send("Server running");
 });
 
-
 // 🔥 LEADS API
 app.get("/leads", (req, res) => {
   res.json(leads);
 });
-
 
 // 🔥 START AUTO CALLS
 app.get("/start-calls", async (req, res) => {
@@ -48,7 +46,6 @@ async function processQueue() {
 
   setTimeout(processQueue, 15000);
 }
-
 
 // 🔥 MANUAL CALL
 app.get("/call", async (req, res) => {
@@ -82,11 +79,13 @@ app.get("/call", async (req, res) => {
 
   callCount++;
 
-  res.send(await response.text());
+  const text = await response.text();
+  console.log("TWILIO RESPONSE:", text);
+
+  res.send(text);
 });
 
-
-// 🔥 AI VOICE HANDLER (STABLE + SPEECH FIXED)
+// 🔥 AI VOICE HANDLER
 app.all("/twilio-voice", async (req, res) => {
   try {
     const userInput = req.body.SpeechResult;
@@ -97,7 +96,6 @@ app.all("/twilio-voice", async (req, res) => {
 
     if (!sessions[callSid]) sessions[callSid] = [];
 
-    // 🔥 HANDLE NO SPEECH
     if (!userInput) {
       res.type("text/xml");
       return res.send(`
@@ -179,127 +177,56 @@ Short responses. One question at a time.
   }
 });
 
-
-// 🔥 ELITE DASHBOARD
+// 🔥 CLEAN SAAS DASHBOARD
 app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
   <head>
-    <title>AI Caller</title>
+    <title>Your CRM</title>
     <style>
-      body {
-        margin: 0;
-        font-family: -apple-system, sans-serif;
-        background: #0b0f19;
-        color: white;
-        display: flex;
-      }
-
-      .sidebar {
-        width: 240px;
-        background: #020617;
-        padding: 24px;
-        height: 100vh;
-      }
-
-      .logo {
-        font-size: 20px;
-        margin-bottom: 30px;
-      }
-
-      .main {
-        flex: 1;
-        padding: 30px;
-      }
-
-      .topbar {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 30px;
-      }
-
-      .btn {
-        background: linear-gradient(135deg,#3b82f6,#6366f1);
-        border: none;
-        padding: 10px 18px;
-        border-radius: 10px;
-        color: white;
-        cursor: pointer;
-      }
-
-      .cards {
-        display: flex;
-        gap: 20px;
-        margin-bottom: 30px;
-      }
-
-      .card {
-        background: #111827;
-        padding: 20px;
-        border-radius: 14px;
-        width: 200px;
-      }
-
-      table {
-        width: 100%;
-      }
-
-      td, th {
-        padding: 12px;
-      }
-
-      .call-btn {
-        background: #22c55e;
-        border: none;
-        padding: 6px 10px;
-        border-radius: 6px;
-        cursor: pointer;
-      }
+      body { margin:0; font-family:sans-serif; background:#f8fafc; }
+      .navbar { height:60px; background:white; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; padding:0 20px; }
+      .sidebar { width:220px; background:white; border-right:1px solid #e2e8f0; height:calc(100vh - 60px); padding:20px; }
+      .main { flex:1; padding:30px; }
+      .container { display:flex; }
+      .btn { background:#2563eb; color:white; padding:8px 14px; border:none; border-radius:8px; cursor:pointer; }
+      table { width:100%; border-collapse:collapse; background:white; border:1px solid #e2e8f0; }
+      th, td { padding:12px; border-bottom:1px solid #e2e8f0; }
+      .call { background:#22c55e; border:none; padding:6px 10px; border-radius:6px; cursor:pointer; }
     </style>
   </head>
 
   <body>
 
-    <div class="sidebar">
-      <div class="logo">AI Caller</div>
+    <div class="navbar">
+      <div><strong>YourBrand CRM</strong></div>
+      <button class="btn" onclick="start()">Start Calling</button>
     </div>
 
-    <div class="main">
-
-      <div class="topbar">
-        <h1>Dashboard</h1>
-        <button class="btn" onclick="start()">Start Calling</button>
+    <div class="container">
+      <div class="sidebar">
+        <div>Dashboard</div>
+        <div>Leads</div>
+        <div>Calls</div>
       </div>
 
-      <div class="cards">
-        <div class="card">
-          <h2 id="total">0</h2>
-          <p>Leads</p>
-        </div>
-        <div class="card">
-          <h2 id="calls">0</h2>
-          <p>Calls</p>
-        </div>
+      <div class="main">
+        <h2>Leads</h2>
+
+        <table id="table">
+          <tr>
+            <th>Phone</th>
+            <th>Address</th>
+            <th></th>
+          </tr>
+        </table>
       </div>
-
-      <table id="table">
-        <tr>
-          <th>Phone</th>
-          <th>Address</th>
-          <th></th>
-        </tr>
-      </table>
-
     </div>
 
     <script>
-      let calls = 0;
-
       async function load() {
         const res = await fetch("/leads");
         const data = await res.json();
-
-        document.getElementById("total").innerText = data.length;
 
         const table = document.getElementById("table");
 
@@ -309,7 +236,7 @@ app.get("/dashboard", (req, res) => {
           row.innerHTML = \`
             <td>\${l.phone}</td>
             <td>\${l.address}</td>
-            <td><button class="call-btn" onclick="callLead('\${l.phone}','\${l.address}')">Call</button></td>
+            <td><button class="call" onclick="callLead('\${l.phone}','\${l.address}')">Call</button></td>
           \`;
 
           table.appendChild(row);
@@ -318,8 +245,6 @@ app.get("/dashboard", (req, res) => {
 
       async function callLead(phone, address) {
         await fetch(\`/call?to=\${phone}&address=\${encodeURIComponent(address)}\`);
-        calls++;
-        document.getElementById("calls").innerText = calls;
       }
 
       async function start() {
@@ -333,6 +258,5 @@ app.get("/dashboard", (req, res) => {
   </html>
   `);
 });
-
 
 app.listen(process.env.PORT || 3000);
