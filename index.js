@@ -12,10 +12,11 @@ app.use(express.static(__dirname));
 // MEMORY + STATE
 // =========================
 const sessions = {};
+const recordings = {};
 const callState = {};
 
 let leads = [
-  { id: 1, phone: "+12038334544", name: "John", address: "123 Main St", status: "new" }
+  { id: 1, phone: "+12038334544", address: "123 Main St", status: "new" }
 ];
 
 let queue = [];
@@ -47,7 +48,7 @@ app.get("/dashboard", (req, res) => {
 app.get("/leads", (req, res) => res.json(leads));
 
 // =========================
-// ELEVENLABS (SOFTER)
+// ELEVENLABS
 // =========================
 app.post("/tts", async (req, res) => {
   try {
@@ -97,15 +98,7 @@ async function processQueue() {
 
   const lead = queue.shift();
 
-  await fetch(
-    BASE_URL +
-      "/call?to=" +
-      lead.phone +
-      "&name=" +
-      encodeURIComponent(lead.name || "") +
-      "&address=" +
-      encodeURIComponent(lead.address)
-  );
+  await fetch(BASE_URL + "/call?to=" + lead.phone + "&address=" + encodeURIComponent(lead.address));
 
   setTimeout(processQueue, 15000);
 }
@@ -114,26 +107,15 @@ app.get("/call", async (req, res) => {
   const params = new URLSearchParams({
     To: req.query.to,
     From: process.env.TWILIO_NUMBER,
-    Url:
-      BASE_URL +
-      "/twilio-voice?name=" +
-      encodeURIComponent(req.query.name || "") +
-      "&address=" +
-      encodeURIComponent(req.query.address)
+    Url: BASE_URL + "/twilio-voice?address=" + encodeURIComponent(req.query.address)
   });
 
   await fetch(
-    "https://api.twilio.com/2010-04-01/Accounts/" +
-      process.env.TWILIO_SID +
-      "/Calls.json",
+    "https://api.twilio.com/2010-04-01/Accounts/" + process.env.TWILIO_SID + "/Calls.json",
     {
       method: "POST",
       headers: {
-        Authorization:
-          "Basic " +
-          Buffer.from(
-            process.env.TWILIO_SID + ":" + process.env.TWILIO_AUTH
-          ).toString("base64"),
+        Authorization: "Basic " + Buffer.from(process.env.TWILIO_SID + ":" + process.env.TWILIO_AUTH).toString("base64"),
         "Content-Type": "application/x-www-form-urlencoded"
       },
       body: params
@@ -144,37 +126,37 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
+// WHISPER (YOU HEAR THIS)
+// =========================
+app.post("/whisper", (req, res) => {
+  res.type("text/xml").send(`
+<Response>
+  <Say>New inbound lead. You're connected.</Say>
+</Response>
+`);
+});
+
+// =========================
 // AI VOICE
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
   const input = req.body.SpeechResult;
   const address = req.query.address;
-  const name = req.query.name;
 
   if (!sessions[sid]) sessions[sid] = [];
-  if (!callState[sid]) callState[sid] = { introStage: 0 };
+  if (!callState[sid]) callState[sid] = { introDone: false };
 
   let reply;
 
-  // =========================
-  // INTRO FLOW
-  // =========================
-  if (callState[sid].introStage === 0) {
-    callState[sid].introStage = 1;
+  if (!callState[sid].introDone) {
+    callState[sid].introDone = true;
 
-    reply = name
-      ? "Hey this is Jack from Blackline — is this " + name + "?"
-      : "Hey this is Jack from Blackline.";
+    reply = "Hey, this is Jack from Blackline Acquisitions out of Farmington — you had filled something out about getting an offer on your place at " + address + ", just wanted to follow up real quick.";
 
-  } else if (callState[sid].introStage === 1) {
-    callState[sid].introStage = 2;
+  } else if (!input) {
 
-    if (input && input.toLowerCase().includes("no")) {
-      reply = "Ah okay gotcha — sorry about that.";
-    } else {
-      reply = "Gotcha — you had filled something out about getting an offer, just wanted to follow up real quick.";
-    }
+    reply = "Hey sorry, go ahead.";
 
   } else {
 
@@ -192,15 +174,18 @@ app.all("/twilio-voice", async (req, res) => {
         max_tokens: 120,
         temperature: 0.8,
         system: `
-You are Jack from Blackline.
+You are Jack from Blackline Acquisitions in Farmington.
 
-- Do NOT repeat the property or address
-- Do NOT repeat what the caller says
-- Do NOT ask how the process works
-- Keep it natural and conversational
+You are calling about a property at: ${address}
+
+They already filled out a form — this is a casual follow-up.
+
+Sound relaxed and conversational.
 
 If they show interest, say:
 "let me grab Chris real quick"
+
+Do not sound formal. Do not ask for the address.
 `,
         messages: sessions[sid]
       })
@@ -215,41 +200,27 @@ If they show interest, say:
       }
     }
 
-    reply = text.trim() || "Yeah — what were you thinking on it?";
+    reply = text.trim();
+
+    if (!reply) {
+      reply = "Yeah — what were you thinking on it?";
+    }
 
     sessions[sid].push({ role: "assistant", content: reply });
   }
 
   // =========================
-  // 🔥 QUALIFIED TRANSFER
+  // 🔥 TRANSFER LOGIC (FIXED VOICE)
   // =========================
-  const r = (reply || "").toLowerCase();
-  const u = (input || "").toLowerCase();
+  if (reply.toLowerCase().includes("grab chris")) {
 
-  const qualified =
-    u.includes("yes") ||
-    u.includes("yeah") ||
-    u.includes("interested") ||
-    u.includes("maybe") ||
-    u.includes("sell") ||
-    u.includes("offer") ||
-    u.includes("price") ||
-    u.includes("cash") ||
-    u.includes("buy") ||
-    u.includes("soon") ||
-    u.includes("asap") ||
-    u.includes("quick");
-
-  if (r.includes("grab chris") && qualified) {
     let audioUrl = null;
 
     try {
       const tts = await fetch(BASE_URL + "/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: "Cool — I’ll grab Chris real quick and he’ll get you situated."
-        })
+        body: JSON.stringify({ text: "Cool — I’ll grab Chris real quick and he’ll get you situated." })
       });
 
       audioUrl = (await tts.json()).url;
@@ -258,14 +229,13 @@ If they show interest, say:
     return res.type("text/xml").send(`
 <Response>
   ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>Connecting you now</Say>`}
-  <Dial>${CHRIS_NUMBER}</Dial>
+  <Dial>
+    <Number url="${BASE_URL}/whisper">${CHRIS_NUMBER}</Number>
+  </Dial>
 </Response>
 `);
   }
 
-  // =========================
-  // NORMAL RESPONSE
-  // =========================
   let audioUrl = null;
 
   try {
@@ -281,7 +251,7 @@ If they show interest, say:
   res.type("text/xml").send(`
 <Response>
   <Gather input="speech" speechTimeout="auto" timeout="5" method="POST"
-    action="/twilio-voice?name=${encodeURIComponent(name || "")}&address=${encodeURIComponent(address)}">
+    action="/twilio-voice?address=${encodeURIComponent(address)}">
     ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>${reply}</Say>`}
   </Gather>
 </Response>
