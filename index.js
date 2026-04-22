@@ -47,7 +47,7 @@ app.get("/dashboard", (req, res) => {
 app.get("/leads", (req, res) => res.json(leads));
 
 // =========================
-// ELEVENLABS
+// ELEVENLABS (SOFTER)
 // =========================
 app.post("/tts", async (req, res) => {
   try {
@@ -144,23 +144,6 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// WHISPER (FIXED)
-// =========================
-app.post("/whisper", (req, res) => {
-  const sid = req.body.CallSid;
-
-  const session = sessions[sid] || {};
-  const name = session.name || "unknown";
-  const address = session.address || "no address";
-
-  res.type("text/xml").send(`
-<Response>
-  <Say>New lead. ${name}. ${address}.</Say>
-</Response>
-`);
-});
-
-// =========================
 // AI VOICE
 // =========================
 app.all("/twilio-voice", async (req, res) => {
@@ -169,12 +152,8 @@ app.all("/twilio-voice", async (req, res) => {
   const address = req.query.address;
   const name = req.query.name;
 
-  if (!sessions[sid]) sessions[sid] = {};
+  if (!sessions[sid]) sessions[sid] = [];
   if (!callState[sid]) callState[sid] = { introStage: 0 };
-
-  // ✅ store for whisper
-  sessions[sid].name = name;
-  sessions[sid].address = address;
 
   let reply;
 
@@ -199,8 +178,7 @@ app.all("/twilio-voice", async (req, res) => {
 
   } else {
 
-    sessions[sid].history = sessions[sid].history || [];
-    sessions[sid].history.push({ role: "user", content: input });
+    sessions[sid].push({ role: "user", content: input });
 
     const ai = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -216,14 +194,15 @@ app.all("/twilio-voice", async (req, res) => {
         system: `
 You are Jack from Blackline.
 
-- Do NOT repeat the address
-- Do NOT repeat what the user says
+- Do NOT repeat the property or address
+- Do NOT repeat what the caller says
+- Do NOT ask how the process works
 - Keep it natural and conversational
 
-If they show interest:
-say "let me grab Chris real quick"
+If they show interest, say:
+"let me grab Chris real quick"
 `,
-        messages: sessions[sid].history
+        messages: sessions[sid]
       })
     });
 
@@ -238,11 +217,11 @@ say "let me grab Chris real quick"
 
     reply = text.trim() || "Yeah — what were you thinking on it?";
 
-    sessions[sid].history.push({ role: "assistant", content: reply });
+    sessions[sid].push({ role: "assistant", content: reply });
   }
 
   // =========================
-  // QUALIFIED TRANSFER
+  // 🔥 QUALIFIED TRANSFER
   // =========================
   const r = (reply || "").toLowerCase();
   const u = (input || "").toLowerCase();
@@ -262,7 +241,6 @@ say "let me grab Chris real quick"
     u.includes("quick");
 
   if (r.includes("grab chris") && qualified) {
-
     let audioUrl = null;
 
     try {
@@ -279,10 +257,8 @@ say "let me grab Chris real quick"
 
     return res.type("text/xml").send(`
 <Response>
-  ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>Connecting</Say>`}
-  <Dial answerOnBridge="true">
-    <Number url="${BASE_URL}/whisper">${CHRIS_NUMBER}</Number>
-  </Dial>
+  ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>Connecting you now</Say>`}
+  <Dial>${CHRIS_NUMBER}</Dial>
 </Response>
 `);
   }
