@@ -126,12 +126,17 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// WHISPER (YOU HEAR THIS)
+// WHISPER (UPDATED - YOU HEAR ADDRESS)
 // =========================
 app.post("/whisper", (req, res) => {
+  const sid = req.body.CallSid;
+
+  const session = sessions[sid] || {};
+  const address = session.address || "no address";
+
   res.type("text/xml").send(`
 <Response>
-  <Say>New inbound lead. You're connected.</Say>
+  <Say>New lead. ${address}.</Say>
 </Response>
 `);
 });
@@ -146,6 +151,9 @@ app.all("/twilio-voice", async (req, res) => {
 
   if (!sessions[sid]) sessions[sid] = [];
   if (!callState[sid]) callState[sid] = { introDone: false };
+
+  // ✅ store address for whisper
+  sessions[sid].address = address;
 
   let reply;
 
@@ -210,7 +218,7 @@ Do not sound formal. Do not ask for the address.
   }
 
   // =========================
-  // 🔥 TRANSFER LOGIC (FIXED VOICE)
+  // TRANSFER (UNCHANGED, JUST ADDED answerOnBridge)
   // =========================
   if (reply.toLowerCase().includes("grab chris")) {
 
@@ -229,7 +237,7 @@ Do not sound formal. Do not ask for the address.
     return res.type("text/xml").send(`
 <Response>
   ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>Connecting you now</Say>`}
-  <Dial>
+  <Dial answerOnBridge="true">
     <Number url="${BASE_URL}/whisper">${CHRIS_NUMBER}</Number>
   </Dial>
 </Response>
