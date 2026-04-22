@@ -28,7 +28,7 @@ const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 app.get("/", (req, res) => res.send("RUNNING"));
 
 // =========================
-// DASHBOARD (YOUR UI)
+// DASHBOARD
 // =========================
 app.get("/dashboard", (req, res) => {
   res.send(`
@@ -81,12 +81,12 @@ app.get("/dashboard", (req, res) => {
 app.get("/leads", (req, res) => res.json(leads));
 
 // =========================
-// ELEVENLABS (FAST)
+// ELEVENLABS
 // =========================
 app.post("/tts", async (req, res) => {
   try {
     const r = await fetch(
-      "https://api.elevenlabs.io/v1/text-to-speech/bxPMdBTxMI0LMo67TDEK",
+      "https://api.elevenlabs.io/v1/text-to-speech/4e32WqNVWRquDa1OcRYZ",
       {
         method: "POST",
         headers: {
@@ -131,7 +131,7 @@ async function processQueue() {
 
   await fetch(BASE_URL + "/call?to=" + lead.phone + "&address=" + encodeURIComponent(lead.address));
 
-  setTimeout(processQueue, 12000); // 🔥 faster pacing
+  setTimeout(processQueue, 12000);
 }
 
 app.get("/call", async (req, res) => {
@@ -158,7 +158,7 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// AI VOICE (FAST + NATURAL)
+// AI VOICE (FIXED PROPERLY)
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -170,16 +170,26 @@ app.all("/twilio-voice", async (req, res) => {
 
   let reply;
 
+  // INTRO
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
 
     reply = "Hey, this is Jack from Blackline Acquisitions out of Farmington — you filled something out about getting an offer on your place at " + address + ", just wanted to follow up.";
   }
+
+  // NO INPUT
   else if (!input) {
-    reply = "Go ahead.";
+    reply = "Hey sorry, go ahead.";
   }
+
+  // NORMAL FLOW
   else {
     sessions[sid].push({ role: "user", content: input });
+
+    // keep memory stable
+    if (sessions[sid].length > 10) {
+      sessions[sid] = sessions[sid].slice(-10);
+    }
 
     const ai = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -189,32 +199,45 @@ app.all("/twilio-voice", async (req, res) => {
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-3-haiku-20240307", // 🔥 FAST
-        max_tokens: 50, // 🔥 FAST + natural
+        model: "claude-3-haiku-20240307",
+        max_tokens: 80,
         temperature: 0.9,
         system: `
-You are Jack from Blackline Acquisitions.
+You are Jack from Blackline Acquisitions in Farmington.
 
-This is a follow-up call.
+This is a FOLLOW-UP call. They already filled out a form.
 
-Be natural, short, and conversational.
-Ask one question at a time.
+Act like you're continuing a conversation.
+
+Respond directly to what they said.
+Then ask a natural follow-up.
+
+Keep it short and human.
 `,
         messages: sessions[sid]
       })
     });
 
     const data = await ai.json();
+    console.log("AI RAW:", JSON.stringify(data));
 
     let text = "";
 
     if (data?.content) {
-      for (const b of data.content) {
-        if (b.type === "text") text += b.text;
+      for (const block of data.content) {
+        if (block.type === "text" && block.text) {
+          text += block.text;
+        }
       }
     }
 
-    reply = text.trim() || "Yeah — what were you thinking?";
+    reply = text.trim();
+
+    // 🔥 FIXED FALLBACK (NOT REPETITIVE)
+    if (!reply) {
+      reply = "Gotcha — can you tell me a little more about that?";
+    }
+
     sessions[sid].push({ role: "assistant", content: reply });
   }
 
