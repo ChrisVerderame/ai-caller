@@ -116,7 +116,7 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// AI VOICE (REAL FIX)
+// AI VOICE (FIXED)
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -181,16 +181,15 @@ Respond directly to what they said, then ask something.
 
     reply = text.trim();
 
-    reply = text.trim();
+    // 🔥 LOOP FIX (ONLY CHANGE)
+    if (!reply || reply.length < 5) {
+      reply = "Yeah go ahead."; // neutral, never loops
+    } else {
+      callState[sid].lastReply = reply; // only store real AI replies
+    }
 
-// 🔥 REAL FIX: NEVER REUSE SAME LINE
-if (!reply || reply.length < 5) {
-  reply = "Yeah go ahead."; // neutral, non-looping, non-repeating
-} else {
-  callState[sid].lastReply = reply; // ONLY store real AI replies
-}
-
-sessions[sid].push({ role: "assistant", content: reply });
+    sessions[sid].push({ role: "assistant", content: reply });
+  }
 
   let audioUrl = null;
 
