@@ -25,7 +25,7 @@ app.post("/twilio-voice", async (req, res) => {
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-3-haiku-latest",
+        model: "claude-sonnet-4-5",
         max_tokens: 120,
 
         // ✅ THIS IS THE FIX
