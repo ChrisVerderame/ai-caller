@@ -199,7 +199,7 @@ app.all("/twilio-voice", async (req, res) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-5",
-        max_tokens: 120,
+        max_tokens: 170,
         temperature: 0.9,
         system: `
 You are Jack from Blackline Acquisitions.
