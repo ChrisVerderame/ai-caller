@@ -28,7 +28,7 @@ const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 app.get("/", (req, res) => res.send("RUNNING"));
 
 // =========================
-// DASHBOARD (RESTORED)
+// DASHBOARD (YOUR UI)
 // =========================
 app.get("/dashboard", (req, res) => {
   res.send(`
@@ -81,12 +81,12 @@ app.get("/dashboard", (req, res) => {
 app.get("/leads", (req, res) => res.json(leads));
 
 // =========================
-// ELEVENLABS
+// ELEVENLABS (FAST)
 // =========================
 app.post("/tts", async (req, res) => {
   try {
     const r = await fetch(
-      "https://api.elevenlabs.io/v1/text-to-speech/4e32WqNVWRquDa1OcRYZ",
+      "https://api.elevenlabs.io/v1/text-to-speech/bxPMdBTxMI0LMo67TDEK",
       {
         method: "POST",
         headers: {
@@ -131,7 +131,7 @@ async function processQueue() {
 
   await fetch(BASE_URL + "/call?to=" + lead.phone + "&address=" + encodeURIComponent(lead.address));
 
-  setTimeout(processQueue, 15000);
+  setTimeout(processQueue, 12000); // 🔥 faster pacing
 }
 
 app.get("/call", async (req, res) => {
@@ -158,7 +158,7 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// AI VOICE (FIXED)
+// AI VOICE (FAST + NATURAL)
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -170,23 +170,16 @@ app.all("/twilio-voice", async (req, res) => {
 
   let reply;
 
-  // INTRO
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
+
     reply = "Hey, this is Jack from Blackline Acquisitions out of Farmington — you filled something out about getting an offer on your place at " + address + ", just wanted to follow up.";
   }
-
   else if (!input) {
-    reply = "Hey sorry, go ahead.";
+    reply = "Go ahead.";
   }
-
   else {
     sessions[sid].push({ role: "user", content: input });
-
-    // 🔥 LIMIT MEMORY
-    if (sessions[sid].length > 12) {
-      sessions[sid] = sessions[sid].slice(-8);
-    }
 
     const ai = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -196,21 +189,15 @@ app.all("/twilio-voice", async (req, res) => {
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-3-haiku-20240307",
-        max_tokens: 80,
-        temperature: 0.8,
+        model: "claude-3-haiku-20240307", // 🔥 FAST
+        max_tokens: 50, // 🔥 FAST + natural
+        temperature: 0.9,
         system: `
-You are Jack from Blackline Acquisitions in Farmington.
+You are Jack from Blackline Acquisitions.
 
-This is a follow-up call from a form they filled out.
+This is a follow-up call.
 
 Be natural, short, and conversational.
-
-Goal:
-- confirm interest
-- understand timeline
-- move toward appointment or transfer
-
 Ask one question at a time.
 `,
         messages: sessions[sid]
@@ -218,24 +205,16 @@ Ask one question at a time.
     });
 
     const data = await ai.json();
-    console.log("AI RAW:", JSON.stringify(data));
 
     let text = "";
 
     if (data?.content) {
-      for (const block of data.content) {
-        if (block.type === "text" && block.text) {
-          text += block.text;
-        }
+      for (const b of data.content) {
+        if (b.type === "text") text += b.text;
       }
     }
 
-    reply = text.trim();
-
-    if (!reply) {
-      reply = "Gotcha — are you still looking to sell or just seeing what kind of offers you'd get?";
-    }
-
+    reply = text.trim() || "Yeah — what were you thinking?";
     sessions[sid].push({ role: "assistant", content: reply });
   }
 
