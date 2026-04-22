@@ -181,15 +181,16 @@ Respond directly to what they said, then ask something.
 
     reply = text.trim();
 
-    // 🔥 THE FIX: NO NEW FALLBACK TEXT
-    if (!reply || reply.length < 5) {
-      reply = callState[sid].lastReply || "Yeah gotcha.";
-    }
+    reply = text.trim();
 
-    callState[sid].lastReply = reply;
+// 🔥 REAL FIX: NEVER REUSE SAME LINE
+if (!reply || reply.length < 5) {
+  reply = "Yeah go ahead."; // neutral, non-looping, non-repeating
+} else {
+  callState[sid].lastReply = reply; // ONLY store real AI replies
+}
 
-    sessions[sid].push({ role: "assistant", content: reply });
-  }
+sessions[sid].push({ role: "assistant", content: reply });
 
   let audioUrl = null;
 
