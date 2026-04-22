@@ -29,21 +29,18 @@ const CHRIS_NUMBER = process.env.CHRIS_NUMBER;
 app.get("/", (req, res) => res.send("RUNNING"));
 
 // =========================
-// DASHBOARD (LOGO RESTORED)
+// DASHBOARD
 // =========================
 app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
   <body style="background:#000;color:#fff;font-family:sans-serif;">
     <div style="max-width:800px;margin:auto;padding:40px;">
-
       <img src="/logo.png" style="height:220px;display:block;margin:auto;">
-
       <button onclick="fetch('/start-calls')" 
         style="margin-top:30px;padding:15px;background:#fff;color:#000;font-weight:bold;border:none;border-radius:10px;display:block;margin-left:auto;margin-right:auto;cursor:pointer;">
         START CALLING
       </button>
-
     </div>
   </body>
   </html>
@@ -51,7 +48,7 @@ app.get("/dashboard", (req, res) => {
 });
 
 // =========================
-// ELEVENLABS (MORE HUMAN)
+// ELEVENLABS
 // =========================
 app.post("/tts", async (req, res) => {
   try {
@@ -176,40 +173,37 @@ app.all("/twilio-voice", async (req, res) => {
         system: `
 You are Jack from Blackline Acquisitions.
 
-You are calling about THIS specific property:
-${address}
+You are calling about this property: ${address}.
+The homeowner already submitted it. You already know it.
 
-The homeowner already filled out a form about THIS property.
-You already know the address. NEVER ask for it.
+Never ask for the address or what property they are referring to.
 
-TONE:
+Tone:
 - relaxed
 - casual
 - slightly imperfect
-- real human, not scripted
+- sounds like a real person
 
-IMPORTANT RULES:
-- NEVER ask for the address
-- NEVER ask what property they are referring to
-- NEVER ask about mortgage, price, or finances
-- NEVER repeat yourself
-- NEVER repeat what they said
-- NEVER sound like a script
+Rules:
+- do not ask about price, mortgage, or finances
+- do not repeat yourself
+- do not repeat the caller
+- do not sound scripted
 
-CONVERSATION STYLE:
+Style:
 - 1–2 sentences max
 - acknowledge briefly
-- ask ONE simple follow-up OR just react
+- ask ONE simple follow-up or just react
 - sometimes don’t ask a question at all
 
-EXAMPLES:
-- "yeah gotcha — are you just exploring or actually thinking about selling?"
-- "okay that makes sense… what’s got you looking into it?"
-- "honestly we can keep it simple — just wanted to see where you’re at with it"
+Examples:
+- yeah gotcha — are you just exploring or actually thinking about selling?
+- okay that makes sense… what’s got you looking into it?
+- honestly we can keep it simple — just wanted to see where you’re at with it
 
-TRANSFER:
-If they show interest, say naturally:
-"let me grab Chris real quick",
+If they show interest:
+say "let me grab Chris real quick"
+`,
         messages: sessions[sid]
       })
     });
@@ -225,14 +219,9 @@ If they show interest, say naturally:
 
     reply = text.trim() || "yeah gotcha — what’s got you looking into it?";
 
-    if (Math.random() < 0.3) {
-      const fillers = ["yeah ", "okay ", "gotcha ", "honestly "];
-      reply = fillers[Math.floor(Math.random() * fillers.length)] + reply;
-    }
-
-    const last = sessions[sid].slice(-1)[0]?.content || "";
-    if (reply.toLowerCase() === last.toLowerCase()) {
-      reply = "yeah gotcha — what’s got you thinking about it?";
+    // hard block address question
+    if (reply.toLowerCase().includes("address")) {
+      reply = "yeah gotcha — what’s got you looking into it?";
     }
 
     sessions[sid].push({ role: "assistant", content: reply });
