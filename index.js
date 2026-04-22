@@ -82,7 +82,7 @@ app.get("/dashboard", (req, res) => {
 app.get("/leads", (req, res) => res.json(leads));
 
 // =========================
-// ELEVENLABS
+// ELEVENLABS (FASTER)
 // =========================
 app.post("/tts", async (req, res) => {
   try {
@@ -94,7 +94,8 @@ app.post("/tts", async (req, res) => {
       },
       body: JSON.stringify({
         text: req.body.text,
-        model_id: "eleven_turbo_v2"
+        model_id: "eleven_turbo_v2",
+        optimize_streaming_latency: 3 // 🔥 speed boost
       })
     });
 
@@ -128,7 +129,7 @@ async function processQueue() {
 
   await fetch(BASE_URL + "/call?to=" + lead.phone + "&address=" + encodeURIComponent(lead.address));
 
-  setTimeout(processQueue, 15000);
+  setTimeout(processQueue, 10000); // 🔥 faster pacing
 }
 
 app.get("/call", async (req, res) => {
@@ -154,7 +155,7 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// AI VOICE (FOLLOW-UP MODE)
+// AI VOICE (FASTER MODEL)
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -166,7 +167,6 @@ app.all("/twilio-voice", async (req, res) => {
 
   let reply;
 
-  // 🔥 FOLLOW-UP INTRO
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
 
@@ -188,8 +188,8 @@ app.all("/twilio-voice", async (req, res) => {
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 120,
+        model: "claude-3-haiku-20240307", // 🔥 faster
+        max_tokens: 60, // 🔥 faster
         temperature: 0.8,
         system: `
 You are Jack from Blackline Acquisitions in Farmington.
@@ -199,30 +199,19 @@ The homeowner already filled out a form requesting an offer.
 
 Tone:
 - relaxed, confident, not salesy
-- assume familiarity (this is a follow-up)
-- never sound like you're calling randomly
+- assume familiarity
 
 Goals:
 1. Confirm interest
 2. Understand timeline
 3. Understand property condition
 4. Identify motivation
-5. Move toward:
-   - setting an appointment
-   - OR transferring to Chris if they are a strong lead
+5. Move toward appointment or transfer
 
 Rules:
 - 1–2 sentences max
 - Ask one question at a time
-- No scripts
 - Keep it natural
-- If they’re warm → guide forward
-- If they’re hot → push next step
-
-Examples:
-- "Gotcha — yeah I saw you filled that out, just wanted to connect."
-- "Are you still looking to sell or just seeing what kind of offers you'd get?"
-- "What were you thinking timeline-wise?"
 `,
         messages: sessions[sid]
       })
