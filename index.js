@@ -144,11 +144,14 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// WHISPER (ONLY YOU HEAR)
+// WHISPER (FIXED)
 // =========================
 app.post("/whisper", (req, res) => {
-  const name = req.query.name || "unknown";
-  const address = req.query.address || "no address";
+  const sid = req.body.CallSid;
+
+  const session = sessions[sid] || {};
+  const name = session.name || "unknown";
+  const address = session.address || "no address";
 
   res.type("text/xml").send(`
 <Response>
@@ -166,12 +169,18 @@ app.all("/twilio-voice", async (req, res) => {
   const address = req.query.address;
   const name = req.query.name;
 
-  if (!sessions[sid]) sessions[sid] = [];
+  if (!sessions[sid]) sessions[sid] = {};
   if (!callState[sid]) callState[sid] = { introStage: 0 };
+
+  // ✅ store for whisper
+  sessions[sid].name = name;
+  sessions[sid].address = address;
 
   let reply;
 
+  // =========================
   // INTRO FLOW
+  // =========================
   if (callState[sid].introStage === 0) {
     callState[sid].introStage = 1;
 
@@ -190,7 +199,8 @@ app.all("/twilio-voice", async (req, res) => {
 
   } else {
 
-    sessions[sid].push({ role: "user", content: input });
+    sessions[sid].history = sessions[sid].history || [];
+    sessions[sid].history.push({ role: "user", content: input });
 
     const ai = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -213,7 +223,7 @@ You are Jack from Blackline.
 If they show interest:
 say "let me grab Chris real quick"
 `,
-        messages: sessions[sid]
+        messages: sessions[sid].history
       })
     });
 
@@ -228,7 +238,7 @@ say "let me grab Chris real quick"
 
     reply = text.trim() || "Yeah — what were you thinking on it?";
 
-    sessions[sid].push({ role: "assistant", content: reply });
+    sessions[sid].history.push({ role: "assistant", content: reply });
   }
 
   // =========================
@@ -271,15 +281,15 @@ say "let me grab Chris real quick"
 <Response>
   ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>Connecting</Say>`}
   <Dial answerOnBridge="true">
-    <Number url="${BASE_URL}/whisper?name=${encodeURIComponent(name || "")}&address=${encodeURIComponent(address)}">
-      ${CHRIS_NUMBER}
-    </Number>
+    <Number url="${BASE_URL}/whisper">${CHRIS_NUMBER}</Number>
   </Dial>
 </Response>
 `);
   }
 
+  // =========================
   // NORMAL RESPONSE
+  // =========================
   let audioUrl = null;
 
   try {
