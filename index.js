@@ -26,7 +26,7 @@ app.get("/call", async (req, res) => {
   console.log("SID:", process.env.TWILIO_SID);
 console.log("AUTH:", process.env.TWILIO_AUTH ? "exists" : "missing");
 
-  const to = "+18607353483"; // <-- PUT YOUR REAL NUMBER HERE
+  const to = "+2038334544"; // <-- PUT YOUR REAL NUMBER HERE
 
   const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`;
 
