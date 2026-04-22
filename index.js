@@ -96,7 +96,7 @@ app.post("/recording", (req, res) => {
   res.sendStatus(200);
 });
 
-// 🔥 AI VOICE (FIXED + IMPROVED CONVO)
+// 🔥 AI VOICE (FAST + BETTER CONVERSIONS)
 app.all("/twilio-voice", async (req, res) => {
   const input = req.body.SpeechResult;
   const sid = req.body.CallSid;
@@ -106,7 +106,7 @@ app.all("/twilio-voice", async (req, res) => {
 
   const isFirst = sessions[sid].length === 0;
 
-  // 🔥 FIRST MESSAGE (NO MORE "REPEAT THAT")
+  // FIRST MESSAGE (NO BUG)
   if (isFirst) {
     return res.type("text/xml").send(`
 <Response>
@@ -122,7 +122,7 @@ app.all("/twilio-voice", async (req, res) => {
 `);
   }
 
-  // 🔥 NO INPUT AFTER FIRST TURN
+  // NO INPUT
   if (!input) {
     return res.type("text/xml").send(`
 <Response>
@@ -136,7 +136,6 @@ app.all("/twilio-voice", async (req, res) => {
 `);
   }
 
-  // SAVE USER INPUT
   sessions[sid].push({ role: "user", content: input });
 
   let reply = "Got it.";
@@ -151,36 +150,36 @@ app.all("/twilio-voice", async (req, res) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-5",
-        max_tokens: 120,
+        max_tokens: 60,          // 🔥 faster
+        temperature: 0.7,        // 🔥 more natural
 
         system: `
-You are a real estate acquisitions caller talking to a homeowner.
+You are a real estate acquisitions caller.
+
+GOAL:
+Get them to agree to a follow-up call.
 
 STYLE:
-- Talk casually like a real person
-- Short sentences
+- Sound human, not scripted
+- Short responses (1–2 sentences)
 - One question at a time
-- Slightly imperfect is fine
 
 FLOW:
-1. Ask if they’d consider selling
-2. Ask timeline
-3. Ask condition
-4. Ask motivation
+- Confirm property
+- Ask if they'd consider selling
+- Ask timeline
+- Ask condition
+- Ask motivation
 
 IF INTERESTED:
-- Move toward setting a call
-- "I can have my partner Chris give you a quick call"
+"I can have my partner Chris give you a quick call — what time works?"
 
 IF NOT INTERESTED:
-- Stay relaxed
-- Don't push hard
-- Exit naturally
+"No worries, just figured I'd ask."
 
 IMPORTANT:
-- Never sound scripted
-- Never say "as an AI"
-- Keep it human
+- Never sound robotic
+- Keep it casual
 `
         ,
         messages: sessions[sid]
@@ -211,7 +210,7 @@ IMPORTANT:
 `);
 });
 
-// 🔥 CLEAN VOXLY UI
+// 🔥 CLEAN UI
 app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
