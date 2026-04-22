@@ -95,7 +95,7 @@ app.post("/tts", async (req, res) => {
       body: JSON.stringify({
         text: req.body.text,
         model_id: "eleven_turbo_v2",
-        optimize_streaming_latency: 3 // 🔥 speed boost
+        optimize_streaming_latency: 3
       })
     });
 
@@ -155,7 +155,7 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// AI VOICE (FASTER MODEL)
+// AI VOICE (FIXED)
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -188,8 +188,8 @@ app.all("/twilio-voice", async (req, res) => {
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-3-haiku-20240307", // 🔥 faster
-        max_tokens: 60, // 🔥 faster
+        model: "claude-3-haiku-20240307",
+        max_tokens: 60,
         temperature: 0.8,
         system: `
 You are Jack from Blackline Acquisitions in Farmington.
@@ -200,13 +200,6 @@ The homeowner already filled out a form requesting an offer.
 Tone:
 - relaxed, confident, not salesy
 - assume familiarity
-
-Goals:
-1. Confirm interest
-2. Understand timeline
-3. Understand property condition
-4. Identify motivation
-5. Move toward appointment or transfer
 
 Rules:
 - 1–2 sentences max
@@ -231,8 +224,19 @@ Rules:
 
     reply = text.trim();
 
-    if (!reply) {
-      reply = "Yeah, just wanted to follow up with you — what were you thinking on it?";
+    // 🔥 NON-LOOPING FALLBACK
+    if (!reply || reply.length < 5) {
+      const lower = (input || "").toLowerCase();
+
+      if (lower.includes("yes") || lower.includes("yeah")) {
+        reply = "Gotcha — what were you thinking timeline-wise?";
+      } 
+      else if (lower.includes("no")) {
+        reply = "All good — were you just curious about what it might be worth?";
+      } 
+      else {
+        reply = "Gotcha — what’s going on with the property?";
+      }
     }
 
     sessions[sid].push({ role: "assistant", content: reply });
