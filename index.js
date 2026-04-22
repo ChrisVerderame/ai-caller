@@ -18,7 +18,6 @@ let leads = [
 
 let queue = [];
 
-// YOUR DOMAIN
 const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 
 /* =========================
@@ -27,54 +26,34 @@ const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 app.get("/", (req, res) => res.send("RUNNING"));
 
 /* =========================
-   DASHBOARD
+   DASHBOARD (SAFE)
 ========================= */
 app.get("/dashboard", (req, res) => {
   res.send(`
+  <!DOCTYPE html>
   <html>
   <head>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
-      body { margin:0; background:#000; color:#fff; font-family:'Inter', sans-serif; }
-      .wrap { max-width:900px; margin:auto; padding:40px 20px; }
-      .logo { text-align:center; margin-bottom:40px; }
-      .logo img { height:220px; }
-      .cta { text-align:center; margin-bottom:40px; }
-      .btn { background:#fff; color:#000; font-weight:700; padding:14px 30px; border-radius:14px; border:none; cursor:pointer; }
-      .row { display:flex; justify-content:space-between; align-items:center; padding:18px 0; border-bottom:1px solid #111; }
-      .info { display:flex; flex-direction:column; }
-      .phone { font-size:16px; font-weight:600; }
-      .address { font-size:13px; color:#777; }
-      select { background:#111; border:none; color:#fff; padding:6px 10px; border-radius:8px; }
-      .recordings { margin-top:60px; }
-      audio { width:100%; margin-top:10px; }
+      body { background:#000; color:#fff; font-family:sans-serif; padding:40px; }
+      .row { display:flex; justify-content:space-between; margin-bottom:10px; }
+      select { background:#111; color:#fff; }
+      button { padding:10px 20px; margin-bottom:20px; }
     </style>
   </head>
-
   <body>
-    <div class="wrap">
 
-      <div class="logo">
-        <img src="/logo.png"/>
-      </div>
+    <h2>CALLER</h2>
+    <button onclick="start()">START CALLING</button>
 
-      <div class="cta">
-        <button class="btn" onclick="start()">START CALLING</button>
-      </div>
+    <div id="list"></div>
 
-      <div id="list"></div>
-
-      <div class="recordings">
-        <h3>CALL RECORDINGS</h3>
-        <div id="recs"></div>
-      </div>
-
-    </div>
+    <h3>RECORDINGS</h3>
+    <div id="recs"></div>
 
     <script>
       async function start(){
         await fetch("/start-calls");
-        alert("Calling started");
+        alert("Started");
       }
 
       async function updateStatus(id, status){
@@ -90,24 +69,18 @@ app.get("/dashboard", (req, res) => {
         const list = document.getElementById("list");
         list.innerHTML = "";
 
-        leads.forEach(l=>{
+        leads.forEach(function(l){
           const row = document.createElement("div");
           row.className = "row";
 
-          row.innerHTML = `
-            <div class="info">
-              <div class="phone">${l.phone}</div>
-              <div class="address">${l.address}</div>
-            </div>
-
-            <select onchange="updateStatus(${l.id}, this.value)">
-              <option value="new">New</option>
-              <option value="called">Called</option>
-              <option value="interested">Interested</option>
-              <option value="appointment">Appointment</option>
-              <option value="closed">Closed</option>
-            </select>
-          `;
+          row.innerHTML = '<div>' + l.phone + ' | ' + l.address + '</div>' +
+          '<select onchange="updateStatus(' + l.id + ', this.value)">' +
+            '<option value="new">New</option>' +
+            '<option value="called">Called</option>' +
+            '<option value="interested">Interested</option>' +
+            '<option value="appointment">Appointment</option>' +
+            '<option value="closed">Closed</option>' +
+          '</select>';
 
           list.appendChild(row);
         });
@@ -116,18 +89,16 @@ app.get("/dashboard", (req, res) => {
         const recDiv = document.getElementById("recs");
         recDiv.innerHTML = "";
 
-        recs.forEach(r=>{
+        recs.forEach(function(r){
           const el = document.createElement("div");
-          el.innerHTML = `
-            <div>${r.time}</div>
-            <audio controls src="${r.url}"></audio>
-          `;
+          el.innerHTML = '<div>' + r.time + '</div><audio controls src="' + r.url + '"></audio>';
           recDiv.appendChild(el);
         });
       }
 
       load();
     </script>
+
   </body>
   </html>
   `);
@@ -165,7 +136,7 @@ app.post("/recording", (req, res) => {
 ========================= */
 app.post("/tts", async (req, res) => {
   try {
-    console.log("TTS TEXT:", req.body.text);
+    console.log("TTS:", req.body.text);
 
     const response = await fetch(
       "https://api.elevenlabs.io/v1/text-to-speech/3sfGn775ryaDXhFWHwBg",
@@ -187,8 +158,8 @@ app.post("/tts", async (req, res) => {
     );
 
     if (!response.ok) {
-      const errText = await response.text();
-      console.log("ELEVEN ERROR:", errText);
+      const err = await response.text();
+      console.log("ELEVEN ERROR:", err);
       throw new Error("TTS failed");
     }
 
@@ -197,10 +168,10 @@ app.post("/tts", async (req, res) => {
     const fileName = "speech_" + Date.now() + ".mp3";
     fs.writeFileSync(path.join(__dirname, fileName), Buffer.from(audio));
 
-    const publicUrl = BASE_URL + "/" + fileName;
-    console.log("AUDIO URL:", publicUrl);
+    const url = BASE_URL + "/" + fileName;
+    console.log("AUDIO URL:", url);
 
-    res.json({ url: publicUrl });
+    res.json({ url });
 
   } catch (err) {
     console.log("TTS FAIL:", err.message);
