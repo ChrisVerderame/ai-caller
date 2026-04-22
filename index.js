@@ -2,14 +2,17 @@ const express = require("express");
 
 const app = express();
 
-// 🔥 REQUIRED FOR TWILIO
+// 🔥 REQUIRED
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// 🧠 MEMORY (per call)
+// 🔥 SERVE STATIC FILES (FOR logo.png)
+app.use(express.static(__dirname));
+
+// 🧠 MEMORY
 const sessions = {};
 
-// 🧠 LEADS (WORKING STATIC VERSION)
+// 🧠 LEADS (KEEP SIMPLE + WORKING)
 let leads = [
   { phone: "+12038334544", address: "123 Main St" },
   { phone: "+18605551234", address: "22 Main St" }
@@ -47,45 +50,49 @@ async function processQueue() {
   setTimeout(processQueue, 15000);
 }
 
-// 🔥 MANUAL CALL
+// 🔥 MANUAL CALL (WITH DEBUG)
 app.get("/call", async (req, res) => {
-  const accountSid = process.env.TWILIO_SID;
-  const authToken = process.env.TWILIO_AUTH;
-  const from = process.env.TWILIO_NUMBER;
+  try {
+    const accountSid = process.env.TWILIO_SID;
+    const authToken = process.env.TWILIO_AUTH;
+    const from = process.env.TWILIO_NUMBER;
 
-  const to = req.query.to || "+12038334544";
-  const address = req.query.address || "your property";
+    const to = req.query.to || "+12038334544";
+    const address = req.query.address || "your property";
 
-  console.log("Calling:", to);
+    console.log("Calling:", to);
 
-  const params = new URLSearchParams({
-    To: to,
-    From: from,
-    Url: `https://ai-caller-production-88df.up.railway.app/twilio-voice?address=${encodeURIComponent(address)}`
-  });
+    const params = new URLSearchParams({
+      To: to,
+      From: from,
+      Url: `https://ai-caller-production-88df.up.railway.app/twilio-voice?address=${encodeURIComponent(address)}`
+    });
 
-  const response = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`,
-    {
-      method: "POST",
-      headers: {
-        Authorization:
-          "Basic " + Buffer.from(accountSid + ":" + authToken).toString("base64"),
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: params
-    }
-  );
+    const response = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`,
+      {
+        method: "POST",
+        headers: {
+          Authorization:
+            "Basic " + Buffer.from(accountSid + ":" + authToken).toString("base64"),
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: params
+      }
+    );
 
-  callCount++;
+    const text = await response.text();
+    console.log("TWILIO RESPONSE:", text);
 
-  const text = await response.text();
-  console.log("TWILIO RESPONSE:", text);
+    res.send(text);
 
-  res.send(text);
+  } catch (err) {
+    console.error("CALL ERROR:", err);
+    res.send("Call failed");
+  }
 });
 
-// 🔥 AI VOICE HANDLER
+// 🔥 AI VOICE
 app.all("/twilio-voice", async (req, res) => {
   try {
     const userInput = req.body.SpeechResult;
@@ -100,11 +107,8 @@ app.all("/twilio-voice", async (req, res) => {
       res.type("text/xml");
       return res.send(`
         <Response>
-          <Gather input="speech"
-            speechTimeout="auto"
-            speechModel="phone_call"
-            language="en-US"
-            action="https://ai-caller-production-88df.up.railway.app/twilio-voice?address=${encodeURIComponent(address)}"
+          <Gather input="speech" speechTimeout="auto"
+            action="/twilio-voice?address=${encodeURIComponent(address)}"
             method="POST">
             <Say>I didn’t catch that, can you repeat?</Say>
           </Gather>
@@ -130,10 +134,9 @@ app.all("/twilio-voice", async (req, res) => {
           system: `
 You are a real estate acquisitions caller.
 
-Property: ${address}
-
 Talk casually like a real human.
-Short responses. One question at a time.
+Keep responses short.
+Ask one question at a time.
 `,
           messages: sessions[callSid]
         })
@@ -154,11 +157,8 @@ Short responses. One question at a time.
     res.type("text/xml");
     res.send(`
       <Response>
-        <Gather input="speech"
-          speechTimeout="auto"
-          speechModel="phone_call"
-          language="en-US"
-          action="https://ai-caller-production-88df.up.railway.app/twilio-voice?address=${encodeURIComponent(address)}"
+        <Gather input="speech" speechTimeout="auto"
+          action="/twilio-voice?address=${encodeURIComponent(address)}"
           method="POST">
           <Say>${reply}</Say>
         </Gather>
@@ -177,50 +177,125 @@ Short responses. One question at a time.
   }
 });
 
-// 🔥 CLEAN SAAS DASHBOARD
+// 🔥 APPLE-STYLE DASHBOARD (LOGO READY)
 app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
   <head>
-    <title>Your CRM</title>
+    <title>Blackline CRM</title>
+
     <style>
-      body { margin:0; font-family:sans-serif; background:#f8fafc; }
-      .navbar { height:60px; background:white; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; padding:0 20px; }
-      .sidebar { width:220px; background:white; border-right:1px solid #e2e8f0; height:calc(100vh - 60px); padding:20px; }
-      .main { flex:1; padding:30px; }
-      .container { display:flex; }
-      .btn { background:#2563eb; color:white; padding:8px 14px; border:none; border-radius:8px; cursor:pointer; }
-      table { width:100%; border-collapse:collapse; background:white; border:1px solid #e2e8f0; }
-      th, td { padding:12px; border-bottom:1px solid #e2e8f0; }
-      .call { background:#22c55e; border:none; padding:6px 10px; border-radius:6px; cursor:pointer; }
+      body {
+        margin:0;
+        background:#000;
+        color:#e5e5e5;
+        font-family:-apple-system, BlinkMacSystemFont, sans-serif;
+        animation:fade 0.4s ease;
+      }
+
+      @keyframes fade {
+        from { opacity:0; transform:translateY(5px); }
+        to { opacity:1; transform:translateY(0); }
+      }
+
+      .nav {
+        height:60px;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        padding:0 20px;
+        border-bottom:1px solid #1f1f1f;
+      }
+
+      .logo {
+        display:flex;
+        align-items:center;
+        gap:10px;
+      }
+
+      .logo img {
+        height:28px;
+        object-fit:contain;
+      }
+
+      .btn {
+        background:#0A84FF;
+        border:none;
+        color:white;
+        padding:8px 14px;
+        border-radius:10px;
+        cursor:pointer;
+        transition:all 0.2s ease;
+      }
+
+      .btn:hover {
+        transform:translateY(-1px);
+        opacity:0.9;
+      }
+
+      .container {
+        padding:30px;
+      }
+
+      table {
+        width:100%;
+        background:#111;
+        border-radius:12px;
+        overflow:hidden;
+        border:1px solid #1f1f1f;
+      }
+
+      th, td {
+        padding:14px;
+        border-bottom:1px solid #1f1f1f;
+      }
+
+      th {
+        font-size:12px;
+        color:#888;
+        text-transform:uppercase;
+      }
+
+      tr:hover {
+        background:#161616;
+      }
+
+      .call {
+        background:#30D158;
+        border:none;
+        padding:6px 10px;
+        border-radius:8px;
+        cursor:pointer;
+        transition:all 0.2s ease;
+      }
+
+      .call:hover {
+        transform:scale(1.05);
+      }
     </style>
   </head>
 
   <body>
 
-    <div class="navbar">
-      <div><strong>YourBrand CRM</strong></div>
+    <div class="nav">
+      <div class="logo">
+        <img src="/logo.png" />
+        <strong>Blackline</strong>
+      </div>
+
       <button class="btn" onclick="start()">Start Calling</button>
     </div>
 
     <div class="container">
-      <div class="sidebar">
-        <div>Dashboard</div>
-        <div>Leads</div>
-        <div>Calls</div>
-      </div>
+      <h2>Leads</h2>
 
-      <div class="main">
-        <h2>Leads</h2>
-
-        <table id="table">
-          <tr>
-            <th>Phone</th>
-            <th>Address</th>
-            <th></th>
-          </tr>
-        </table>
-      </div>
+      <table id="table">
+        <tr>
+          <th>Phone</th>
+          <th>Address</th>
+          <th></th>
+        </tr>
+      </table>
     </div>
 
     <script>
