@@ -16,7 +16,7 @@ const recordings = {};
 const callState = {};
 
 let leads = [
-  { id: 1, phone: "+12038334544", name: "John", address: "123 Main St", status: "new" }
+  { id: 1, phone: "+12038334544", address: "123 Main St", status: "new" }
 ];
 
 let queue = [];
@@ -70,6 +70,8 @@ app.post("/tts", async (req, res) => {
       })
     });
 
+    if (!r.ok) throw new Error();
+
     const audio = await r.arrayBuffer();
     const file = "speech_" + Date.now() + ".mp3";
 
@@ -96,7 +98,7 @@ async function processQueue() {
 
   const lead = queue.shift();
 
-  await fetch(BASE_URL + "/call?to=" + lead.phone + "&name=" + encodeURIComponent(lead.name || "") + "&address=" + encodeURIComponent(lead.address));
+  await fetch(BASE_URL + "/call?to=" + lead.phone + "&address=" + encodeURIComponent(lead.address));
 
   setTimeout(processQueue, 15000);
 }
@@ -105,7 +107,7 @@ app.get("/call", async (req, res) => {
   const params = new URLSearchParams({
     To: req.query.to,
     From: process.env.TWILIO_NUMBER,
-    Url: BASE_URL + "/twilio-voice?name=" + encodeURIComponent(req.query.name || "") + "&address=" + encodeURIComponent(req.query.address)
+    Url: BASE_URL + "/twilio-voice?address=" + encodeURIComponent(req.query.address)
   });
 
   await fetch(
@@ -124,38 +126,37 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
+// WHISPER (YOU HEAR THIS)
+// =========================
+app.post("/whisper", (req, res) => {
+  res.type("text/xml").send(`
+<Response>
+  <Say>New inbound lead. You're connected.</Say>
+</Response>
+`);
+});
+
+// =========================
 // AI VOICE
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
   const input = req.body.SpeechResult;
   const address = req.query.address;
-  const name = req.query.name;
 
   if (!sessions[sid]) sessions[sid] = [];
-  if (!callState[sid]) callState[sid] = { introStage: 0 };
+  if (!callState[sid]) callState[sid] = { introDone: false };
 
   let reply;
 
-  // =========================
-  // INTRO FLOW (NAME CHECK)
-  // =========================
-  if (callState[sid].introStage === 0) {
-    callState[sid].introStage = 1;
+  if (!callState[sid].introDone) {
+    callState[sid].introDone = true;
 
-    reply = name
-      ? "Hey this is Jack from Blackline — is this " + name + "?"
-      : "Hey this is Jack from Blackline.";
+    reply = "Hey, this is Jack from Blackline Acquisitions out of Farmington — you had filled something out about getting an offer on your place at " + address + ", just wanted to follow up real quick.";
 
-  } else if (callState[sid].introStage === 1) {
+  } else if (!input) {
 
-    callState[sid].introStage = 2;
-
-    if (input && input.toLowerCase().includes("no")) {
-      reply = "Ah okay gotcha — sorry about that.";
-    } else {
-      reply = "Gotcha — you had filled something out about getting an offer on your place, just wanted to follow up real quick.";
-    }
+    reply = "Hey sorry, go ahead.";
 
   } else {
 
@@ -173,18 +174,18 @@ app.all("/twilio-voice", async (req, res) => {
         max_tokens: 120,
         temperature: 0.8,
         system: `
-You are Jack from Blackline.
+You are Jack from Blackline Acquisitions in Farmington.
 
-Do NOT repeat the property or address more than once.
-Do NOT mention it again after the intro.
+You are calling about a property at: ${address}
+
+They already filled out a form — this is a casual follow-up.
 
 Sound relaxed and conversational.
 
-DO NOT repeat what the caller says.
-DO NOT ask how the process works.
+If they show interest, say:
+"let me grab Chris real quick"
 
-If they show interest:
-say "let me grab Chris real quick"
+Do not sound formal. Do not ask for the address.
 `,
         messages: sessions[sid]
       })
@@ -199,13 +200,17 @@ say "let me grab Chris real quick"
       }
     }
 
-    reply = text.trim() || "Yeah — what were you thinking on it?";
+    reply = text.trim();
+
+    if (!reply) {
+      reply = "Yeah — what were you thinking on it?";
+    }
 
     sessions[sid].push({ role: "assistant", content: reply });
   }
 
   // =========================
-  // TRANSFER
+  // 🔥 TRANSFER LOGIC (FIXED VOICE)
   // =========================
   if (reply.toLowerCase().includes("grab chris")) {
 
@@ -224,7 +229,9 @@ say "let me grab Chris real quick"
     return res.type("text/xml").send(`
 <Response>
   ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>Connecting you now</Say>`}
-  <Dial>${CHRIS_NUMBER}</Dial>
+  <Dial>
+    <Number url="${BASE_URL}/whisper">${CHRIS_NUMBER}</Number>
+  </Dial>
 </Response>
 `);
   }
@@ -244,7 +251,7 @@ say "let me grab Chris real quick"
   res.type("text/xml").send(`
 <Response>
   <Gather input="speech" speechTimeout="auto" timeout="5" method="POST"
-    action="/twilio-voice?name=${encodeURIComponent(name || "")}&address=${encodeURIComponent(address)}">
+    action="/twilio-voice?address=${encodeURIComponent(address)}">
     ${audioUrl ? `<Play>${audioUrl}</Play>` : `<Say>${reply}</Say>`}
   </Gather>
 </Response>
