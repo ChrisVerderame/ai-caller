@@ -223,7 +223,7 @@ Flow:
 - don’t rush
 
 If they seem interested:
-ask: "are you just exploring or thinking about selling?"
+ask: "gotcha — if we made you a fair offer, is selling something you’d consider or are you just shopping around?"
 
 Only AFTER they show intent:
 ask: "what’s a good time to take a look at it?"
