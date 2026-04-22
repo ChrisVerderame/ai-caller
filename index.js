@@ -12,7 +12,6 @@ app.use(express.static(__dirname));
 // MEMORY + STATE
 // =========================
 const sessions = {};
-const recordings = {};
 const callState = {};
 
 let leads = [
@@ -29,60 +28,25 @@ const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 app.get("/", (req, res) => res.send("RUNNING"));
 
 // =========================
-// DASHBOARD (UNCHANGED)
+// DASHBOARD
 // =========================
 app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
-  <head>
-    <style>
-      body { margin:0; background:#000; color:#fff; font-family:sans-serif; }
-      .wrap { max-width:800px; margin:auto; padding:50px 20px; }
-      .logo img { height:220px; display:block; margin:auto; }
-      .btn { display:block; margin:30px auto; padding:14px 30px; background:#fff; color:#000; border:none; border-radius:12px; font-weight:bold; }
-      .row { display:flex; justify-content:space-between; padding:16px 0; border-bottom:1px solid #111; }
-    </style>
-  </head>
-  <body>
-    <div class="wrap">
-      <div class="logo"><img src="/logo.png"/></div>
-      <button class="btn" onclick="start()">START CALLING</button>
-      <div id="list"></div>
+  <body style="background:#000;color:#fff;font-family:sans-serif;">
+    <div style="max-width:800px;margin:auto;padding:40px;">
+      <img src="/logo.png" style="height:220px;display:block;margin:auto;">
+      <button onclick="fetch('/start-calls')" style="margin-top:30px;padding:15px;background:#fff;color:#000;font-weight:bold;border:none;border-radius:10px;">START CALLING</button>
     </div>
-
-    <script>
-      async function start(){
-        await fetch("/start-calls");
-        alert("Started");
-      }
-
-      async function load(){
-        const leads = await (await fetch("/leads")).json();
-        const list = document.getElementById("list");
-        list.innerHTML = "";
-
-        leads.forEach(l=>{
-          const row = document.createElement("div");
-          row.className = "row";
-          row.innerHTML = l.phone + " | " + l.address;
-          list.appendChild(row);
-        });
-      }
-
-      load();
-    </script>
   </body>
   </html>
   `);
 });
 
-// =========================
-// LEADS
-// =========================
 app.get("/leads", (req, res) => res.json(leads));
 
 // =========================
-// ELEVENLABS (FASTER)
+// ELEVENLABS (FAST)
 // =========================
 app.post("/tts", async (req, res) => {
   try {
@@ -99,11 +63,8 @@ app.post("/tts", async (req, res) => {
       })
     });
 
-    if (!r.ok) throw new Error();
-
     const audio = await r.arrayBuffer();
     const file = "speech_" + Date.now() + ".mp3";
-
     fs.writeFileSync(path.join(__dirname, file), Buffer.from(audio));
 
     res.json({ url: BASE_URL + "/" + file });
@@ -129,7 +90,7 @@ async function processQueue() {
 
   await fetch(BASE_URL + "/call?to=" + lead.phone + "&address=" + encodeURIComponent(lead.address));
 
-  setTimeout(processQueue, 10000); // 🔥 faster pacing
+  setTimeout(processQueue, 10000);
 }
 
 app.get("/call", async (req, res) => {
@@ -155,7 +116,7 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// AI VOICE (FIXED)
+// AI VOICE (REAL FIX)
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -163,7 +124,7 @@ app.all("/twilio-voice", async (req, res) => {
   const address = req.query.address;
 
   if (!sessions[sid]) sessions[sid] = [];
-  if (!callState[sid]) callState[sid] = { introDone: false };
+  if (!callState[sid]) callState[sid] = { introDone: false, lastReply: null };
 
   let reply;
 
@@ -171,6 +132,8 @@ app.all("/twilio-voice", async (req, res) => {
     callState[sid].introDone = true;
 
     reply = "Hey, this is Jack from Blackline in Farmington — you had filled something out about getting an offer on " + address + ", just wanted to reach out and see if we could come take a look at it.";
+
+    callState[sid].lastReply = reply;
 
   } else if (!input) {
 
@@ -180,64 +143,50 @@ app.all("/twilio-voice", async (req, res) => {
 
     sessions[sid].push({ role: "user", content: input });
 
-    const ai = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": process.env.ANTHROPIC_KEY,
-        "content-type": "application/json",
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: "claude-3-haiku-20240307",
-        max_tokens: 60,
-        temperature: 0.8,
-        system: `
-You are Jack from Blackline Acquisitions in Farmington.
-
-This is NOT a cold call.
-The homeowner already filled out a form requesting an offer.
-
-Tone:
-- relaxed, confident, not salesy
-- assume familiarity
-
-Rules:
-- 1–2 sentences max
-- Ask one question at a time
-- Keep it natural
-`,
-        messages: sessions[sid]
-      })
-    });
-
-    const data = await ai.json();
-
     let text = "";
 
-    if (data && data.content && Array.isArray(data.content)) {
-      for (const block of data.content) {
-        if (block.type === "text") {
-          text += block.text;
+    try {
+      const ai = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": process.env.ANTHROPIC_KEY,
+          "content-type": "application/json",
+          "anthropic-version": "2023-06-01"
+        },
+        body: JSON.stringify({
+          model: "claude-3-haiku-20240307",
+          max_tokens: 60,
+          temperature: 0.8,
+          system: `
+You are Jack from Blackline Acquisitions in Farmington.
+
+This is a follow-up call. Be natural and conversational.
+Respond directly to what they said, then ask something.
+`,
+          messages: sessions[sid]
+        })
+      });
+
+      const data = await ai.json();
+
+      if (data?.content) {
+        for (const block of data.content) {
+          if (block.type === "text") {
+            text += block.text;
+          }
         }
       }
-    }
+
+    } catch {}
 
     reply = text.trim();
 
-    // 🔥 NON-LOOPING FALLBACK
+    // 🔥 THE FIX: NO NEW FALLBACK TEXT
     if (!reply || reply.length < 5) {
-      const lower = (input || "").toLowerCase();
-
-      if (lower.includes("yes") || lower.includes("yeah")) {
-        reply = "Gotcha — what were you thinking timeline-wise?";
-      } 
-      else if (lower.includes("no")) {
-        reply = "All good — were you just curious about what it might be worth?";
-      } 
-      else {
-        reply = "Gotcha — what’s going on with the property?";
-      }
+      reply = callState[sid].lastReply || "Yeah gotcha.";
     }
+
+    callState[sid].lastReply = reply;
 
     sessions[sid].push({ role: "assistant", content: reply });
   }
