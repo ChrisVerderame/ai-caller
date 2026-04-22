@@ -3,15 +3,19 @@ const express = require("express");
 const app = express();
 app.use(express.json());
 
+// 🧠 MEMORY STORE (per call)
+const sessions = {};
+
 // 👉 TEST ROUTE
 app.get("/", (req, res) => {
   res.send("Server running");
 });
 
-// 🧠 AI VOICE HANDLER (WITH ADDRESS)
+// 🧠 AI VOICE HANDLER
 app.post("/twilio-voice", async (req, res) => {
   const userInput = req.body.SpeechResult || "Hello";
   const address = req.query.address || "your property";
+  const callSid = req.body.CallSid;
 
   console.log("User said:", userInput);
   console.log("Address:", address);
@@ -19,6 +23,17 @@ app.post("/twilio-voice", async (req, res) => {
   let reply = "Hey, can you say that again?";
 
   try {
+    // 🧠 Initialize memory
+    if (!sessions[callSid]) {
+      sessions[callSid] = [];
+    }
+
+    // Add user input to memory
+    sessions[callSid].push({
+      role: "user",
+      content: userInput
+    });
+
     const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -29,27 +44,36 @@ app.post("/twilio-voice", async (req, res) => {
       body: JSON.stringify({
         model: "claude-sonnet-4-5",
         max_tokens: 120,
+
         system: `
-You are a real estate acquisitions assistant calling a homeowner.
+You are a real estate acquisitions guy calling a homeowner.
 
-You are calling about the property at: ${address}
+You are calling about: ${address}
 
-Start naturally like:
-"Hey, this is about your property on ${address} — did I catch you at a bad time?"
+Talk casually, like a normal person—not a script.
+
+Rules:
+- Never sound robotic
+- Never over-explain
+- Keep sentences short
+- Ask one question at a time
+- Slightly imperfect wording is OK
+
+Start like:
+"Hey, this is about your place on ${address} — did I catch you at a bad time?"
 
 Then:
 - Ask timeline
 - Ask condition
 - Ask motivation
-- Keep it short
-- Sound human
+
+If they hesitate, be relaxed—not pushy.
+If they show interest, move toward next step.
+
+Sound like a real human.
 `,
-        messages: [
-          {
-            role: "user",
-            content: userInput
-          }
-        ]
+
+        messages: sessions[callSid]
       })
     });
 
@@ -63,6 +87,18 @@ Then:
       console.error("Bad AI response:", data);
     }
 
+    // 🧹 Clean robotic phrases
+    reply = reply
+      .replace(/As an AI[^.]*\./gi, "")
+      .replace(/I understand that/gi, "")
+      .trim();
+
+    // Save AI reply to memory
+    sessions[callSid].push({
+      role: "assistant",
+      content: reply
+    });
+
   } catch (err) {
     console.error("AI error:", err);
   }
@@ -70,14 +106,14 @@ Then:
   res.type("text/xml");
   res.send(`
     <Response>
-      <Gather input="speech" action="/twilio-voice?address=${encodeURIComponent(address)}" method="POST">
+      <Gather input="speech" bargeIn="true" action="/twilio-voice?address=${encodeURIComponent(address)}" method="POST">
         <Say>${reply}</Say>
       </Gather>
     </Response>
   `);
 });
 
-// 👉 CALL TRIGGER (NOW SUPPORTS ADDRESS + DYNAMIC NUMBER)
+// 👉 CALL TRIGGER
 app.get("/call", async (req, res) => {
   const accountSid = process.env.TWILIO_SID;
   const authToken = process.env.TWILIO_AUTH;
