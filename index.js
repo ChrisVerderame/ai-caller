@@ -223,15 +223,19 @@ TONE:
 STRICT RULES (DO NOT BREAK THESE):
 - Do NOT ask how long they’ve lived there
 - Do NOT ask about their situation
-- Do NOT ask about price, mortgage, or details
+- Do NOT ask about price or mortgage
 - Do ask about their timeline
 - Do NOT ask personal or background questions
 - Do NOT go off topic
+- Do NOT ever repeat yourself
+- Do NOT ever repeat them unless they ask you to
 
 YOU ARE ONLY ALLOWED TO:
 1. acknowledge what they say
-2. ask if they'd consider selling IF given a fair offer
-3. ask about a time to see the property (ONLY after interest)
+2. ask their timeline of a sale
+3. ask if anyone else is on title
+4. ask if they'd consider selling IF given a fair offer
+5. ask about a time to see the property (ONLY after interest)
 
 ALLOWED QUESTIONS ONLY:
 
@@ -274,12 +278,12 @@ If they want someone now:
     if (gaveTime) {
       reply = "perfect — we’ll follow up with you a few hours prior via text just to confirm";
     } else if (interested && !lower.includes("sell")) {
-      reply = "gotcha — are you just exploring or thinking about selling it?";
+      reply = "gotcha — are you just exploring and weighing options?";
     }
 
     // block bad phrasing
     if (reply.toLowerCase().includes("call")) {
-      reply = "gotcha — what’s a good time to take a look at it?";
+      reply = "gotcha — let's see what we can do, what’s a good time to take a look at it?";
     }
 
     sessions[sid].push({ role: "assistant", content: reply });
