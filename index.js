@@ -6,35 +6,56 @@ const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// 🧠 MEMORY (per call)
+// 🧠 MEMORY
 const sessions = {};
 
-// 🧠 LEADS (replace later with Sheets)
-let leads = [
-  { phone: "+12038334544", address: "123 Main St" },
-  { phone: "+18605551234", address: "22 Main St" }
-];
-
+// 🧠 LEADS FROM SHEET
+let leads = [];
 let queue = [];
 let callCount = 0;
+
+// 🔥 LOAD LEADS FROM APPS SCRIPT
+async function loadLeads() {
+  try {
+    const res = await fetch("PASTE_YOUR_APPS_SCRIPT_URL_HERE");
+    const data = await res.json();
+
+    leads = data.map(l => ({
+      name: l.name,
+      phone: l.phone,
+      address: l.address,
+      called: l.called === true || l.called === "TRUE"
+    }));
+
+    console.log("Loaded leads:", leads.length);
+
+  } catch (err) {
+    console.error("Sheet error:", err);
+  }
+}
 
 // 👉 TEST ROUTE
 app.get("/", (req, res) => {
   res.send("Server running");
 });
 
-
 // 🔥 LEADS API
-app.get("/leads", (req, res) => {
+app.get("/leads", async (req, res) => {
+  await loadLeads();
   res.json(leads);
 });
 
-
 // 🔥 START AUTO CALLS
 app.get("/start-calls", async (req, res) => {
-  queue = [...leads].sort(() => Math.random() - 0.5);
+  await loadLeads();
+
+  const fresh = leads.filter(l => !l.called);
+
+  queue = [...fresh].sort(() => Math.random() - 0.5);
+
   processQueue();
-  res.send("Started");
+
+  res.send("Calling " + queue.length + " leads");
 });
 
 async function processQueue() {
@@ -48,7 +69,6 @@ async function processQueue() {
 
   setTimeout(processQueue, 15000);
 }
-
 
 // 🔥 MANUAL CALL
 app.get("/call", async (req, res) => {
@@ -85,8 +105,7 @@ app.get("/call", async (req, res) => {
   res.send(await response.text());
 });
 
-
-// 🔥 AI VOICE HANDLER (STABLE + SPEECH FIXED)
+// 🔥 AI VOICE
 app.all("/twilio-voice", async (req, res) => {
   try {
     const userInput = req.body.SpeechResult;
@@ -97,7 +116,6 @@ app.all("/twilio-voice", async (req, res) => {
 
     if (!sessions[callSid]) sessions[callSid] = [];
 
-    // 🔥 HANDLE NO SPEECH
     if (!userInput) {
       res.type("text/xml");
       return res.send(`
@@ -134,8 +152,8 @@ You are a real estate acquisitions caller.
 
 Property: ${address}
 
-Talk casually like a real human.
-Short responses. One question at a time.
+Talk like a real human.
+Keep it short.
 `,
           messages: sessions[callSid]
         })
@@ -179,160 +197,79 @@ Short responses. One question at a time.
   }
 });
 
-
-// 🔥 ELITE DASHBOARD
+// 🔥 DASHBOARD
 app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
   <head>
     <title>AI Caller</title>
     <style>
-      body {
-        margin: 0;
-        font-family: -apple-system, sans-serif;
-        background: #0b0f19;
-        color: white;
-        display: flex;
-      }
-
-      .sidebar {
-        width: 240px;
-        background: #020617;
-        padding: 24px;
-        height: 100vh;
-      }
-
-      .logo {
-        font-size: 20px;
-        margin-bottom: 30px;
-      }
-
-      .main {
-        flex: 1;
-        padding: 30px;
-      }
-
-      .topbar {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 30px;
-      }
-
-      .btn {
-        background: linear-gradient(135deg,#3b82f6,#6366f1);
-        border: none;
-        padding: 10px 18px;
-        border-radius: 10px;
-        color: white;
-        cursor: pointer;
-      }
-
-      .cards {
-        display: flex;
-        gap: 20px;
-        margin-bottom: 30px;
-      }
-
-      .card {
-        background: #111827;
-        padding: 20px;
-        border-radius: 14px;
-        width: 200px;
-      }
-
-      table {
-        width: 100%;
-      }
-
-      td, th {
-        padding: 12px;
-      }
-
-      .call-btn {
-        background: #22c55e;
-        border: none;
-        padding: 6px 10px;
-        border-radius: 6px;
-        cursor: pointer;
-      }
+      body { margin:0; font-family:sans-serif; background:#0b0f19; color:white; display:flex; }
+      .sidebar { width:240px; background:#020617; padding:20px; }
+      .main { flex:1; padding:30px; }
+      .btn { background:#3b82f6; padding:10px 16px; border:none; border-radius:8px; color:white; cursor:pointer; }
+      table { width:100%; margin-top:20px; }
+      td, th { padding:10px; }
+      .call { background:#22c55e; border:none; padding:6px; border-radius:6px; }
     </style>
   </head>
-
   <body>
 
-    <div class="sidebar">
-      <div class="logo">AI Caller</div>
-    </div>
+  <div class="sidebar">
+    <h2>AI Caller</h2>
+  </div>
 
-    <div class="main">
+  <div class="main">
+    <h1>Dashboard</h1>
+    <button class="btn" onclick="start()">Start Calling</button>
 
-      <div class="topbar">
-        <h1>Dashboard</h1>
-        <button class="btn" onclick="start()">Start Calling</button>
-      </div>
+    <table id="table">
+      <tr>
+        <th>Name</th>
+        <th>Phone</th>
+        <th>Address</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </table>
+  </div>
 
-      <div class="cards">
-        <div class="card">
-          <h2 id="total">0</h2>
-          <p>Leads</p>
-        </div>
-        <div class="card">
-          <h2 id="calls">0</h2>
-          <p>Calls</p>
-        </div>
-      </div>
+  <script>
+    async function load() {
+      const res = await fetch("/leads");
+      const data = await res.json();
 
-      <table id="table">
-        <tr>
-          <th>Phone</th>
-          <th>Address</th>
-          <th></th>
-        </tr>
-      </table>
+      const table = document.getElementById("table");
 
-    </div>
+      data.forEach(l => {
+        const row = document.createElement("tr");
 
-    <script>
-      let calls = 0;
+        row.innerHTML = \`
+          <td>\${l.name}</td>
+          <td>\${l.phone}</td>
+          <td>\${l.address}</td>
+          <td>\${l.called ? "✅ Called" : "❌ New"}</td>
+          <td><button class="call" onclick="callLead('\${l.phone}','\${l.address}')">Call</button></td>
+        \`;
 
-      async function load() {
-        const res = await fetch("/leads");
-        const data = await res.json();
+        table.appendChild(row);
+      });
+    }
 
-        document.getElementById("total").innerText = data.length;
+    async function callLead(phone, address) {
+      await fetch(\`/call?to=\${phone}&address=\${encodeURIComponent(address)}\`);
+    }
 
-        const table = document.getElementById("table");
+    async function start() {
+      await fetch("/start-calls");
+    }
 
-        data.forEach(l => {
-          const row = document.createElement("tr");
-
-          row.innerHTML = \`
-            <td>\${l.phone}</td>
-            <td>\${l.address}</td>
-            <td><button class="call-btn" onclick="callLead('\${l.phone}','\${l.address}')">Call</button></td>
-          \`;
-
-          table.appendChild(row);
-        });
-      }
-
-      async function callLead(phone, address) {
-        await fetch(\`/call?to=\${phone}&address=\${encodeURIComponent(address)}\`);
-        calls++;
-        document.getElementById("calls").innerText = calls;
-      }
-
-      async function start() {
-        await fetch("/start-calls");
-      }
-
-      load();
-    </script>
+    load();
+  </script>
 
   </body>
   </html>
   `);
 });
-
 
 app.listen(process.env.PORT || 3000);
