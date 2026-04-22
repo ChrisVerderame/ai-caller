@@ -29,17 +29,21 @@ const CHRIS_NUMBER = process.env.CHRIS_NUMBER;
 app.get("/", (req, res) => res.send("RUNNING"));
 
 // =========================
-// DASHBOARD (FIXED)
+// DASHBOARD (LOGO RESTORED)
 // =========================
 app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
   <body style="background:#000;color:#fff;font-family:sans-serif;">
-    <div style="max-width:800px;margin:auto;padding:40px;text-align:center;">
-      <h1>AI Caller</h1>
-      <button onclick="fetch('/start-calls')" style="margin-top:30px;padding:15px 25px;background:#fff;color:#000;font-weight:bold;border:none;border-radius:10px;cursor:pointer;">
+    <div style="max-width:800px;margin:auto;padding:40px;">
+
+      <img src="/logo.png" style="height:220px;display:block;margin:auto;">
+
+      <button onclick="fetch('/start-calls')" 
+        style="margin-top:30px;padding:15px;background:#fff;color:#000;font-weight:bold;border:none;border-radius:10px;display:block;margin-left:auto;margin-right:auto;cursor:pointer;">
         START CALLING
       </button>
+
     </div>
   </body>
   </html>
@@ -154,7 +158,6 @@ app.all("/twilio-voice", async (req, res) => {
     reply =
       "Hey — this is Jack from Blackline… you had filled something out about getting an offer on your place, just wanted to follow up real quick.";
   } else if (!input) {
-    // interruption handling
     reply = "yeah go ahead — I got you";
   } else {
     sessions[sid].push({ role: "user", content: input });
@@ -213,13 +216,11 @@ If they seem interested:
 
     reply = text.trim() || "yeah gotcha — what’s got you looking into it?";
 
-    // humanizer
     if (Math.random() < 0.3) {
       const fillers = ["yeah ", "okay ", "gotcha ", "honestly "];
       reply = fillers[Math.floor(Math.random() * fillers.length)] + reply;
     }
 
-    // anti-repeat
     const last = sessions[sid].slice(-1)[0]?.content || "";
     if (reply.toLowerCase() === last.toLowerCase()) {
       reply = "yeah gotcha — what’s got you thinking about it?";
@@ -228,9 +229,6 @@ If they seem interested:
     sessions[sid].push({ role: "assistant", content: reply });
   }
 
-  // =========================
-  // TRANSFER
-  // =========================
   if (reply.toLowerCase().includes("grab chris")) {
     let audioUrl = null;
 
