@@ -8,13 +8,15 @@ app.get("/", (req, res) => {
   res.send("Server running");
 });
 
-// 🧠 AI VOICE HANDLER (FIXED PROPERLY)
+// 🧠 AI VOICE HANDLER (WITH ADDRESS)
 app.post("/twilio-voice", async (req, res) => {
   const userInput = req.body.SpeechResult || "Hello";
+  const address = req.query.address || "your property";
 
   console.log("User said:", userInput);
+  console.log("Address:", address);
 
-  let reply = "Hey, sorry—can you say that again?";
+  let reply = "Hey, can you say that again?";
 
   try {
     const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
@@ -27,13 +29,13 @@ app.post("/twilio-voice", async (req, res) => {
       body: JSON.stringify({
         model: "claude-sonnet-4-5",
         max_tokens: 120,
-
-        // ✅ THIS IS THE FIX
         system: `
 You are a real estate acquisitions assistant calling a homeowner.
 
+You are calling about the property at: ${address}
+
 Start naturally like:
-"Hey, this is about the property you submitted — did I catch you at a bad time?"
+"Hey, this is about your property on ${address} — did I catch you at a bad time?"
 
 Then:
 - Ask timeline
@@ -42,7 +44,6 @@ Then:
 - Keep it short
 - Sound human
 `,
-
         messages: [
           {
             role: "user",
@@ -69,30 +70,30 @@ Then:
   res.type("text/xml");
   res.send(`
     <Response>
-      <Gather input="speech" action="/twilio-voice" method="POST">
+      <Gather input="speech" action="/twilio-voice?address=${encodeURIComponent(address)}" method="POST">
         <Say>${reply}</Say>
       </Gather>
     </Response>
   `);
 });
 
-// 👉 CALL TRIGGER
+// 👉 CALL TRIGGER (NOW SUPPORTS ADDRESS + DYNAMIC NUMBER)
 app.get("/call", async (req, res) => {
   const accountSid = process.env.TWILIO_SID;
   const authToken = process.env.TWILIO_AUTH;
   const from = process.env.TWILIO_NUMBER;
 
-  console.log("SID:", process.env.TWILIO_SID);
-  console.log("AUTH:", process.env.TWILIO_AUTH ? "exists" : "missing");
+  const to = req.query.to || "+12038334544";
+  const address = req.query.address || "your property";
 
-  const to = "+12038334544";
+  console.log("Calling:", to, "| Address:", address);
 
   const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`;
 
   const params = new URLSearchParams({
     To: to,
     From: from,
-    Url: "https://ai-caller-production-88df.up.railway.app/twilio-voice"
+    Url: `https://ai-caller-production-88df.up.railway.app/twilio-voice?address=${encodeURIComponent(address)}`
   });
 
   const response = await fetch(url, {
