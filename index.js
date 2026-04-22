@@ -8,13 +8,13 @@ app.get("/", (req, res) => {
   res.send("Server running");
 });
 
-// 🧠 AI VOICE HANDLER (FIXED)
+// 🧠 AI VOICE HANDLER (FIXED PROPERLY)
 app.post("/twilio-voice", async (req, res) => {
   const userInput = req.body.SpeechResult || "Hello";
 
   console.log("User said:", userInput);
 
-  let reply = "Sorry, I had trouble responding.";
+  let reply = "Hey, sorry—can you say that again?";
 
   try {
     const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
@@ -27,23 +27,23 @@ app.post("/twilio-voice", async (req, res) => {
       body: JSON.stringify({
         model: "claude-3-sonnet-20240229",
         max_tokens: 120,
-        messages: [
-          {
-            role: "system",
-            content: `
+
+        // ✅ THIS IS THE FIX
+        system: `
 You are a real estate acquisitions assistant calling a homeowner.
 
-Start like:
+Start naturally like:
 "Hey, this is about the property you submitted — did I catch you at a bad time?"
 
-Ask:
-- timeline
-- condition
-- motivation
+Then:
+- Ask timeline
+- Ask condition
+- Ask motivation
+- Keep it short
+- Sound human
+`,
 
-Keep it short and natural.
-`
-          },
+        messages: [
           {
             role: "user",
             content: userInput
@@ -76,7 +76,7 @@ Keep it short and natural.
   `);
 });
 
-// 👉 THIS TRIGGERS A CALL
+// 👉 CALL TRIGGER
 app.get("/call", async (req, res) => {
   const accountSid = process.env.TWILIO_SID;
   const authToken = process.env.TWILIO_AUTH;
