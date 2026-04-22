@@ -33,43 +33,11 @@ app.get("/", (req, res) => res.send("RUNNING"));
 app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
-  <head>
-    <style>
-      body { margin:0; background:#000; color:#fff; font-family:sans-serif; }
-      .wrap { max-width:800px; margin:auto; padding:50px 20px; }
-      .logo img { height:220px; display:block; margin:auto; }
-      .btn { display:block; margin:30px auto; padding:14px 30px; background:#fff; color:#000; border:none; border-radius:12px; font-weight:bold; cursor:pointer; }
-      .row { display:flex; justify-content:space-between; padding:16px 0; border-bottom:1px solid #111; }
-    </style>
-  </head>
-  <body>
-    <div class="wrap">
-      <div class="logo"><img src="/logo.png"/></div>
-      <button class="btn" onclick="start()">START CALLING</button>
-      <div id="list"></div>
+  <body style="background:#000;color:#fff;font-family:sans-serif;">
+    <div style="max-width:800px;margin:auto;padding:40px;">
+      <img src="/logo.png" style="height:220px;display:block;margin:auto;">
+      <button onclick="fetch('/start-calls')" style="margin-top:30px;padding:15px;background:#fff;color:#000;font-weight:bold;border:none;border-radius:10px;">START CALLING</button>
     </div>
-
-    <script>
-      async function start(){
-        await fetch("/start-calls");
-        alert("Started");
-      }
-
-      async function load(){
-        const leads = await (await fetch("/leads")).json();
-        const list = document.getElementById("list");
-        list.innerHTML = "";
-
-        leads.forEach(l=>{
-          const row = document.createElement("div");
-          row.className = "row";
-          row.innerHTML = l.phone + " | " + l.address;
-          list.appendChild(row);
-        });
-      }
-
-      load();
-    </script>
   </body>
   </html>
   `);
@@ -81,31 +49,27 @@ app.get("/dashboard", (req, res) => {
 app.get("/leads", (req, res) => res.json(leads));
 
 // =========================
-// ELEVENLABS
+// TTS
 // =========================
 app.post("/tts", async (req, res) => {
   try {
-    const r = await fetch(
-      "https://api.elevenlabs.io/v1/text-to-speech/4e32WqNVWRquDa1OcRYZ",
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": process.env.ELEVEN_KEY,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          text: req.body.text,
-          model_id: "eleven_turbo_v2",
-          optimize_streaming_latency: 3
-        })
-      }
-    );
+    const r = await fetch("https://api.elevenlabs.io/v1/text-to-speech/4e32WqNVWRquDa1OcRYZ", {
+      method: "POST",
+      headers: {
+        "xi-api-key": process.env.ELEVEN_KEY,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        text: req.body.text,
+        model_id: "eleven_turbo_v2",
+        optimize_streaming_latency: 3
+      })
+    });
 
     if (!r.ok) throw new Error();
 
     const audio = await r.arrayBuffer();
     const file = "speech_" + Date.now() + ".mp3";
-
     fs.writeFileSync(path.join(__dirname, file), Buffer.from(audio));
 
     res.json({ url: BASE_URL + "/" + file });
@@ -130,7 +94,6 @@ async function processQueue() {
   const lead = queue.shift();
 
   await fetch(BASE_URL + "/call?to=" + lead.phone + "&address=" + encodeURIComponent(lead.address));
-
   setTimeout(processQueue, 12000);
 }
 
@@ -141,24 +104,20 @@ app.get("/call", async (req, res) => {
     Url: BASE_URL + "/twilio-voice?address=" + encodeURIComponent(req.query.address)
   });
 
-  await fetch(
-    "https://api.twilio.com/2010-04-01/Accounts/" + process.env.TWILIO_SID + "/Calls.json",
-    {
-      method: "POST",
-      headers: {
-        Authorization:
-          "Basic " + Buffer.from(process.env.TWILIO_SID + ":" + process.env.TWILIO_AUTH).toString("base64"),
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: params
-    }
-  );
+  await fetch("https://api.twilio.com/2010-04-01/Accounts/" + process.env.TWILIO_SID + "/Calls.json", {
+    method: "POST",
+    headers: {
+      Authorization: "Basic " + Buffer.from(process.env.TWILIO_SID + ":" + process.env.TWILIO_AUTH).toString("base64"),
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: params
+  });
 
   res.send("OK");
 });
 
 // =========================
-// AI VOICE (FIXED PROPERLY)
+// AI VOICE (HARD FIX)
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -166,30 +125,22 @@ app.all("/twilio-voice", async (req, res) => {
   const address = req.query.address;
 
   if (!sessions[sid]) sessions[sid] = [];
-  if (!callState[sid]) callState[sid] = { introDone: false };
+  if (!callState[sid]) callState[sid] = { introDone: false, lastReply: "" };
 
   let reply;
 
-  // INTRO
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
 
     reply = "Hey, this is Jack from Blackline Acquisitions out of Farmington — you filled something out about getting an offer on your place at " + address + ", just wanted to follow up.";
   }
 
-  // NO INPUT
   else if (!input) {
-    reply = "Hey sorry, go ahead.";
+    reply = "Go ahead.";
   }
 
-  // NORMAL FLOW
   else {
     sessions[sid].push({ role: "user", content: input });
-
-    // keep memory stable
-    if (sessions[sid].length > 10) {
-      sessions[sid] = sessions[sid].slice(-10);
-    }
 
     const ai = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -202,30 +153,23 @@ app.all("/twilio-voice", async (req, res) => {
         model: "claude-3-haiku-20240307",
         max_tokens: 80,
         temperature: 0.9,
-        system: `
-You are Jack from Blackline Acquisitions in Farmington.
-
-This is a FOLLOW-UP call. They already filled out a form.
-
-Act like you're continuing a conversation.
-
-Respond directly to what they said.
-Then ask a natural follow-up.
-
-Keep it short and human.
-`,
+        system: "You are Jack from Blackline. This is a follow up call. Respond naturally.",
         messages: sessions[sid]
       })
     });
 
-    const data = await ai.json();
+    let data = {};
+    try {
+      data = await ai.json();
+    } catch {}
+
     console.log("AI RAW:", JSON.stringify(data));
 
     let text = "";
 
     if (data?.content) {
       for (const block of data.content) {
-        if (block.type === "text" && block.text) {
+        if (block.type === "text") {
           text += block.text;
         }
       }
@@ -233,10 +177,12 @@ Keep it short and human.
 
     reply = text.trim();
 
-    // 🔥 FIXED FALLBACK (NOT REPETITIVE)
-    if (!reply) {
-      reply = "Gotcha — can you tell me a little more about that?";
+    // 🚫 STOP LOOPING FOREVER
+    if (!reply || reply === callState[sid].lastReply) {
+      reply = "Gotcha — tell me a little more about your situation.";
     }
+
+    callState[sid].lastReply = reply;
 
     sessions[sid].push({ role: "assistant", content: reply });
   }
