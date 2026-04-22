@@ -6,22 +6,21 @@ const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// 🔥 SERVE STATIC FILES (FOR logo.png)
+// 🔥 SERVE STATIC (logo.png)
 app.use(express.static(__dirname));
 
 // 🧠 MEMORY
 const sessions = {};
 
-// 🧠 LEADS (KEEP SIMPLE + WORKING)
+// 🧠 LEADS (keep simple + working)
 let leads = [
-  { phone: "+12038334544", address: "123 Main St" },
-  { phone: "+18605551234", address: "22 Main St" }
+  { phone: "+12038334544", address: "123 Main St", status: "new" },
+  { phone: "+18605551234", address: "22 Main St", status: "new" }
 ];
 
 let queue = [];
-let callCount = 0;
 
-// 👉 TEST ROUTE
+// 👉 TEST
 app.get("/", (req, res) => {
   res.send("Server running");
 });
@@ -50,7 +49,7 @@ async function processQueue() {
   setTimeout(processQueue, 15000);
 }
 
-// 🔥 MANUAL CALL (WITH DEBUG)
+// 🔥 CALL
 app.get("/call", async (req, res) => {
   try {
     const accountSid = process.env.TWILIO_SID;
@@ -99,8 +98,6 @@ app.all("/twilio-voice", async (req, res) => {
     const address = req.query.address || "your property";
     const callSid = req.body.CallSid || "test";
 
-    console.log("SpeechResult:", userInput);
-
     if (!sessions[callSid]) sessions[callSid] = [];
 
     if (!userInput) {
@@ -131,13 +128,7 @@ app.all("/twilio-voice", async (req, res) => {
         body: JSON.stringify({
           model: "claude-sonnet-4-5",
           max_tokens: 120,
-          system: `
-You are a real estate acquisitions caller.
-
-Talk casually like a real human.
-Keep responses short.
-Ask one question at a time.
-`,
+          system: "Talk like a casual real estate caller. Short, human responses.",
           messages: sessions[callSid]
         })
       });
@@ -166,111 +157,119 @@ Ask one question at a time.
     `);
 
   } catch (err) {
-    console.error("FATAL:", err);
-
+    console.error(err);
     res.type("text/xml");
-    res.send(`
-      <Response>
-        <Say>Sorry, something went wrong.</Say>
-      </Response>
-    `);
+    res.send(`<Response><Say>Error</Say></Response>`);
   }
 });
 
-// 🔥 APPLE-STYLE DASHBOARD (LOGO READY)
+// 🔥 DASHBOARD (GLASS + PIPELINE + BIG LOGO)
 app.get("/dashboard", (req, res) => {
   res.send(`
   <html>
   <head>
-    <title>Blackline CRM</title>
+    <title>CRM</title>
 
     <style>
       body {
         margin:0;
-        background:#000;
-        color:#e5e5e5;
+        background: radial-gradient(circle at top, #0a0a0a, #000);
+        color:#f5f5f5;
         font-family:-apple-system, BlinkMacSystemFont, sans-serif;
         animation:fade 0.4s ease;
       }
 
       @keyframes fade {
-        from { opacity:0; transform:translateY(5px); }
-        to { opacity:1; transform:translateY(0); }
+        from {opacity:0; transform:translateY(10px);}
+        to {opacity:1; transform:translateY(0);}
       }
 
       .nav {
-        height:60px;
+        height:90px;
         display:flex;
         align-items:center;
         justify-content:space-between;
-        padding:0 20px;
-        border-bottom:1px solid #1f1f1f;
-      }
-
-      .logo {
-        display:flex;
-        align-items:center;
-        gap:10px;
+        padding:0 30px;
+        border-bottom:1px solid rgba(255,255,255,0.08);
       }
 
       .logo img {
-        height:28px;
-        object-fit:contain;
+        height:65px;
       }
 
       .btn {
-        background:#0A84FF;
+        background:white;
+        color:black;
+        font-weight:700;
+        padding:12px 20px;
+        border-radius:14px;
         border:none;
-        color:white;
-        padding:8px 14px;
-        border-radius:10px;
         cursor:pointer;
         transition:all 0.2s ease;
       }
 
       .btn:hover {
-        transform:translateY(-1px);
-        opacity:0.9;
+        transform:translateY(-2px) scale(1.03);
       }
 
-      .container {
+      .main {
         padding:30px;
       }
 
-      table {
-        width:100%;
-        background:#111;
-        border-radius:12px;
-        overflow:hidden;
-        border:1px solid #1f1f1f;
+      .pipeline {
+        display:flex;
+        gap:20px;
+        overflow-x:auto;
       }
 
-      th, td {
-        padding:14px;
-        border-bottom:1px solid #1f1f1f;
+      .column {
+        min-width:280px;
+        background:rgba(255,255,255,0.05);
+        backdrop-filter:blur(14px);
+        border:1px solid rgba(255,255,255,0.08);
+        border-radius:18px;
+        padding:18px;
       }
 
-      th {
-        font-size:12px;
-        color:#888;
-        text-transform:uppercase;
+      .column h3 {
+        font-size:20px;
+        margin-bottom:15px;
+        color:#aaa;
       }
 
-      tr:hover {
-        background:#161616;
-      }
-
-      .call {
-        background:#30D158;
-        border:none;
-        padding:6px 10px;
-        border-radius:8px;
-        cursor:pointer;
+      .card {
+        background:rgba(255,255,255,0.07);
+        border:1px solid rgba(255,255,255,0.08);
+        padding:16px;
+        border-radius:16px;
+        margin-bottom:14px;
         transition:all 0.2s ease;
       }
 
-      .call:hover {
-        transform:scale(1.05);
+      .card:hover {
+        transform:translateY(-4px);
+        background:rgba(255,255,255,0.12);
+      }
+
+      .phone {
+        font-size:20px;
+        font-weight:700;
+      }
+
+      .address {
+        font-size:15px;
+        color:#aaa;
+        margin-bottom:12px;
+      }
+
+      .call {
+        background:white;
+        color:black;
+        font-weight:700;
+        padding:8px 12px;
+        border-radius:10px;
+        border:none;
+        cursor:pointer;
       }
     </style>
   </head>
@@ -279,23 +278,23 @@ app.get("/dashboard", (req, res) => {
 
     <div class="nav">
       <div class="logo">
-        <img src="/logo.png" />
-        <strong>Blackline</strong>
+        <img src="/logo.png"/>
       </div>
 
       <button class="btn" onclick="start()">Start Calling</button>
     </div>
 
-    <div class="container">
-      <h2>Leads</h2>
+    <div class="main">
 
-      <table id="table">
-        <tr>
-          <th>Phone</th>
-          <th>Address</th>
-          <th></th>
-        </tr>
-      </table>
+      <div class="pipeline" id="pipeline">
+
+        <div class="column" data-status="new"><h3>New</h3></div>
+        <div class="column" data-status="called"><h3>Called</h3></div>
+        <div class="column" data-status="interested"><h3>Interested</h3></div>
+        <div class="column" data-status="appointment"><h3>Appointment</h3></div>
+
+      </div>
+
     </div>
 
     <script>
@@ -303,18 +302,19 @@ app.get("/dashboard", (req, res) => {
         const res = await fetch("/leads");
         const data = await res.json();
 
-        const table = document.getElementById("table");
-
         data.forEach(l => {
-          const row = document.createElement("tr");
+          const col = document.querySelector('[data-status="' + (l.status || "new") + '"]');
 
-          row.innerHTML = \`
-            <td>\${l.phone}</td>
-            <td>\${l.address}</td>
-            <td><button class="call" onclick="callLead('\${l.phone}','\${l.address}')">Call</button></td>
+          const card = document.createElement("div");
+          card.className = "card";
+
+          card.innerHTML = \`
+            <div class="phone">\${l.phone}</div>
+            <div class="address">\${l.address}</div>
+            <button class="call" onclick="callLead('\${l.phone}','\${l.address}')">Call</button>
           \`;
 
-          table.appendChild(row);
+          col.appendChild(card);
         });
       }
 
