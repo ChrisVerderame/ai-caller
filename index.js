@@ -9,10 +9,11 @@ app.use(express.json());
 app.use(express.static(__dirname));
 
 // =========================
-// MEMORY + DATA
+// MEMORY + STATE
 // =========================
 const sessions = {};
 const recordings = [];
+const callState = {}; // 🔥 FIX FOR INTRO LOOP
 
 let leads = [
   { id: 1, phone: "+12038334544", address: "123 Main St", status: "new" }
@@ -28,7 +29,7 @@ const BASE_URL = "https://ai-caller-production-88df.up.railway.app";
 app.get("/", (req, res) => res.send("RUNNING"));
 
 // =========================
-// DASHBOARD (YOUR UI)
+// DASHBOARD (UNCHANGED STYLE)
 // =========================
 app.get("/dashboard", (req, res) => {
   res.send(`
@@ -239,7 +240,7 @@ app.get("/call", async (req, res) => {
 });
 
 // =========================
-// AI VOICE (IMPROVED)
+// AI VOICE (FIXED LOOP)
 // =========================
 app.all("/twilio-voice", async (req, res) => {
   const sid = req.body.CallSid;
@@ -247,14 +248,18 @@ app.all("/twilio-voice", async (req, res) => {
   const address = req.query.address;
 
   if (!sessions[sid]) sessions[sid] = [];
+  if (!callState[sid]) callState[sid] = { started: false };
 
   let reply;
 
-  if (sessions[sid].length === 0) {
+  if (!callState[sid].started) {
+    callState[sid].started = true;
     reply = "Hey, this is about your place on " + address + " - did I catch you at a bad time?";
-  } else if (!input) {
-    reply = "Sorry, what was that?";
-  } else {
+  }
+  else if (!input) {
+    reply = "Sorry, I missed that — what were you saying?";
+  }
+  else {
     sessions[sid].push({ role: "user", content: input });
 
     const ai = await fetch("https://api.anthropic.com/v1/messages", {
@@ -271,29 +276,16 @@ app.all("/twilio-voice", async (req, res) => {
         system: `
 You are a real estate investor calling a homeowner.
 
-Be casual, natural, and conversational.
+Be natural, casual, and human.
 
-RULES:
-- Keep responses short (1–2 sentences)
-- Ask ONE question at a time
-- Never sound scripted
-- Slight imperfection is good
+Rules:
+- 1–2 sentences max
+- One question at a time
+- Never restart conversation
+- Move forward always
 
-FLOW:
-- Ask if they're open to selling
-- Ask timeline
-- Ask condition
-- Ask motivation
-- Move toward next step
-
-If they hesitate:
-- stay relaxed
-- don't push hard
-
-If they show interest:
-- move forward quickly
-
-Sound like a real human, not AI.
+Goal:
+Qualify the lead and move toward a deal.
 `,
         messages: sessions[sid]
       })
