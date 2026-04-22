@@ -170,7 +170,7 @@ app.all("/twilio-voice", async (req, res) => {
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
 
-    reply = "Hey, this is Jack from Blackline in Farmington — you had filled something out about getting an offer on " + address + ", just wanted to reach out and see if we could come take a look at it.";
+    reply = "Hey, this is Jack from Blackline Acquisitions out of Farmington — you had filled something out about getting an offer on your place at " + address + ", just wanted to follow up with you real quick.";
 
   } else if (!input) {
 
@@ -271,4 +271,4 @@ Examples:
 `);
 });
 
-app.listen(process.env.PORT || 300
+app.listen(process.env.PORT || 3000);
