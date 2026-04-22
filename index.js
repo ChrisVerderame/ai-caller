@@ -15,7 +15,7 @@ const sessions = {};
 const callState = {};
 
 let leads = [
-  { id: 1, phone: "+12038334544", address: "100 East Street over in Bristol", status: "new" }
+  { id: 1, phone: "+12038334544", address: "123 Main St", status: "new" }
 ];
 
 let queue = [];
@@ -149,11 +149,11 @@ app.all("/twilio-voice", async (req, res) => {
 
   let reply;
 
+  // ✅ FORCED OPENING
   if (!callState[sid].introDone) {
     callState[sid].introDone = true;
 
-    reply =
-      "Hey — this is Jack from Blackline… you had filled something out about getting an offer on your place, just wanted to follow up real quick.";
+    reply = `Hey, is this the owner of ${address}? awesome — just reaching out about the place, you had filled something out about getting an offer`;
   } else if (!input) {
     reply = "yeah go ahead — I got you";
   } else {
@@ -174,31 +174,28 @@ app.all("/twilio-voice", async (req, res) => {
 You are Jack from Blackline Acquisitions.
 
 You are calling about this property: ${address}.
-The homeowner already submitted it. You already know it.
+They already submitted it. You already know it.
 
-Never ask for the address or what property they are referring to.
+Never ask for the address.
 
-Tone:
-- relaxed
-- casual
-- slightly imperfect
-- sounds like a real person
+GOAL:
+- move toward seeing the property
 
-Rules:
-- do not ask about price, mortgage, or finances
-- do not repeat yourself
-- do not repeat the caller
-- do not sound scripted
+RULES:
+- do NOT ask about price, mortgage, or finances
+- do NOT repeat yourself
+- do NOT repeat the caller
+- do NOT suggest a "call"
 
-Booking:
-- let them choose any day/time
-- ask "what works best for you?" if they haven't given one
+BOOKING:
+- if no time given → ask:
+"what’s a good time to take a quick look at it?"
 
-If they give a time:
-say "perfect — we’ll follow up with you a few hours prior via text just to confirm"
+- if time given → confirm:
+"perfect — we’ll follow up with you a few hours prior via text just to confirm"
 
-If they want to talk now:
-say "let me grab Chris real quick"
+- if they want now:
+"let me grab Chris real quick"
 `,
         messages: sessions[sid]
       })
@@ -213,7 +210,7 @@ say "let me grab Chris real quick"
       }
     }
 
-    reply = text.trim() || "yeah gotcha — what’s got you looking into it?";
+    reply = text.trim() || "gotcha — what’s a good time to take a quick look at it?";
 
     const lower = (input || "").toLowerCase();
 
@@ -225,29 +222,31 @@ say "let me grab Chris real quick"
       lower.includes("tonight") ||
       lower.match(/\d{1,2}/);
 
-    const wantsToTalk =
+    const interested =
       lower.includes("yes") ||
       lower.includes("yeah") ||
       lower.includes("interested") ||
-      lower.includes("maybe") ||
-      lower.includes("sounds good") ||
-      lower.includes("okay") ||
-      lower.includes("sure");
+      lower.includes("sure") ||
+      lower.includes("okay");
 
-    // 🔥 ORDER MATTERS
+    // ✅ CORRECT FLOW
     if (gaveTime) {
       reply = "perfect — we’ll follow up with you a few hours prior via text just to confirm";
-    } else if (wantsToTalk) {
-      reply = "gotcha — what works best for you, timing-wise?";
+    } else if (interested) {
+      reply = "gotcha — what’s a good time to take a quick look at it?";
     }
 
-    if (reply.toLowerCase().includes("address")) {
-      reply = "yeah gotcha — what’s got you looking into it?";
+    // ❌ BLOCK CALL LANGUAGE
+    if (reply.toLowerCase().includes("call")) {
+      reply = "gotcha — what’s a good time to take a quick look at it?";
     }
 
     sessions[sid].push({ role: "assistant", content: reply });
   }
 
+  // =========================
+  // TRANSFER
+  // =========================
   if (reply.toLowerCase().includes("grab chris")) {
     let audioUrl = null;
 
